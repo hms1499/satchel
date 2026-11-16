@@ -1,0 +1,78 @@
+pragma cashscript ^0.14.0;
+
+// AgentVault — a spending-limited covenant wallet for AI agents.
+//
+// The vault is a single UTXO holding BCH plus a mutable "state" NFT. Its 12-byte commitment is:
+//   periodStart (4 bytes, LE, block height) || spent (8 bytes, LE, satoshis spent in this period)
+//
+// The agent may spend at most `capPerPeriod` satoshis (miner fees included) per `periodBlocks`
+// blocks, and only to recipients in the allowlist. The owner can always spend everything.
+contract AgentVault(
+    pubkey ownerPk,
+    pubkey agentPk,
+    int capPerPeriod,
+    int periodBlocks,
+    bytes32 allowlistHash
+) {
+    // allowlist = concat(sha256(lockingBytecode_i)) for every allowed recipient (32 bytes each).
+    function spend(sig agentSig, bytes allowlist, int recipientIndex) {
+        require(checkSig(agentSig, agentPk));
+
+        // Only the vault UTXO may be spent, so vault funds can never be merged with other coins.
+        require(tx.inputs.length == 1);
+        require(this.activeInputIndex == 0);
+
+        // The vault UTXO must carry a mutable NFT (32-byte category + 0x01 capability).
+        bytes category = tx.inputs[0].tokenCategory;
+        require(category.length == 33);
+        require(category.split(32)[1] == 0x01);
+
+        bytes commitment = tx.inputs[0].nftCommitment;
+        require(commitment.length == 12);
+        int periodStart = int(commitment.split(4)[0]);
+        int spent = int(commitment.split(4)[1]);
+
+        // Everything that leaves the vault (payment + fee) counts against the budget.
+        int outflow = tx.inputs[0].value - tx.outputs[0].value;
+        require(outflow > 0);
+
+        int newStart = periodStart;
+        int newSpent = spent + outflow;
+        int nextPeriod = periodStart + periodBlocks;
+        if (tx.locktime >= nextPeriod) {
+            // Consensus guarantees (via CLTV) that this tx cannot confirm before block `nextPeriod`.
+            require(tx.time >= nextPeriod);
+            require(tx.locktime < 500000000);
+            newStart = tx.locktime;
+            newSpent = outflow;
+        }
+        require(newSpent <= capPerPeriod);
+
+        // Output 0: the vault continues with updated state.
+        require(tx.outputs[0].lockingBytecode == tx.inputs[0].lockingBytecode);
+        require(tx.outputs[0].tokenCategory == category);
+        require(tx.outputs[0].tokenAmount == 0);
+        require(tx.outputs[0].nftCommitment == toPaddedBytes(newStart, 4) + toPaddedBytes(newSpent, 8));
+
+        // Output 1: payment to an allowlisted recipient, without tokens.
+        require(hash256(allowlist) == allowlistHash);
+        require(recipientIndex >= 0);
+        require((recipientIndex + 1) * 32 <= allowlist.length);
+        bytes entry = allowlist.split(recipientIndex * 32)[1].split(32)[0];
+        require(sha256(tx.outputs[1].lockingBytecode) == entry);
+        require(tx.outputs[1].tokenCategory == 0x);
+
+        // Optional output 2: a zero-value OP_RETURN memo (used for pay-per-call nonces).
+        if (tx.outputs.length == 3) {
+            require(tx.outputs[2].value == 0);
+            require(tx.outputs[2].lockingBytecode.split(1)[0] == 0x6a);
+        } else {
+            require(tx.outputs.length == 2);
+        }
+    }
+
+    // The owner has full control: withdraw, top up, or close the vault.
+    function withdraw(sig ownerSig) {
+        require(checkSig(ownerSig, ownerPk));
+    }
+}
