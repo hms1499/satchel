@@ -1,11 +1,11 @@
-# AgentVault
+# Satchel
 
 A Bitcoin Cash covenant wallet for AI agents: *"Give your agent a budget, not your keys."*
 The owner funds a vault. An AI agent spends from it autonomously, but BCH consensus enforces a
 **per-period cap** and a **recipient allowlist**. The owner can always withdraw.
 
 Built for **BCH BLAZE 2026** (Mainnet Track). **Submission deadline: 2026-11-22 14:00 UTC (21:00 UTC+7).**
-Design doc: `docs/superpowers/specs/2026-11-16-agentvault-design.md`. Read it before changing behavior.
+Design doc: `docs/superpowers/specs/2026-11-16-satchel-design.md`. Read it before changing behavior.
 
 @AGENTS.md
 
@@ -17,10 +17,10 @@ npm test                   # vitest — covenant tests run against MockNetworkPr
 npm run typecheck          # tsc --noEmit
 npm run lint
 npm run build
-npm run compile:contract   # recompile contracts/AgentVault.cash -> src/lib/contract/AgentVault.artifact.json
+npm run compile:contract   # recompile contracts/Satchel.cash -> src/lib/contract/Satchel.artifact.json
 ```
 
-After **any** edit to `contracts/AgentVault.cash`, run `npm run compile:contract` and then `npm test`. The artifact
+After **any** edit to `contracts/Satchel.cash`, run `npm run compile:contract` and then `npm test`. The artifact
 is committed and imported by both the client and the server.
 
 ## Stack
@@ -35,7 +35,7 @@ is committed and imported by both the client and the server.
 
 ## Layout
 
-- `contracts/AgentVault.cash`: the covenant (functions `spend` and `withdraw`).
+- `contracts/Satchel.cash`: the covenant (functions `spend` and `withdraw`).
 - `src/lib/vault.ts`: shared, isomorphic tx builders (`buildGenesis`, `buildAgentSpend`, `buildWithdraw`), plus
   state encoding and the budget math (`computeNextState`, `remainingBudget`).
 - `src/lib/vault.test.ts`: covenant tests. Each negative test asserts the **specific** failing `require`.

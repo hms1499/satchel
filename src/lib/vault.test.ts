@@ -52,7 +52,7 @@ async function setup(cap = 10_000n, periodBlocks = 144n) {
   return { provider, params, contract, vaultUtxo, category };
 }
 
-describe("AgentVault covenant", () => {
+describe("Satchel covenant", () => {
   let ctx: Awaited<ReturnType<typeof setup>>;
   beforeEach(async () => {
     ctx = await setup();

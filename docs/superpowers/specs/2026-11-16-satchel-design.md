@@ -1,4 +1,4 @@
-# AgentVault — Design
+# Satchel — Design
 
 Status: approved by the user, who delegated the product decisions to Claude (2026-11-16).
 Target: BCH BLAZE 2026 Mainnet Track. Deadline 2026-11-22 14:00 UTC.
@@ -6,7 +6,7 @@ Target: BCH BLAZE 2026 Mainnet Track. Deadline 2026-11-22 14:00 UTC.
 ## Intent
 
 AI agents need to pay for things such as APIs, data, and compute. Giving an agent a normal hot wallet means a bug,
-a prompt injection, or a server compromise can drain everything. AgentVault is a **Bitcoin Cash covenant
+a prompt injection, or a server compromise can drain everything. Satchel is a **Bitcoin Cash covenant
 wallet for AI agents**. The owner deposits BCH and the agent can spend it autonomously, but only
 **up to a cap per period** and **only to allowlisted recipients**. The owner can withdraw everything at any time.
 The rules are enforced by BCH consensus, not by our server.

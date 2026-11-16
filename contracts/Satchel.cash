@@ -1,13 +1,13 @@
 pragma cashscript ^0.14.0;
 
-// AgentVault — a spending-limited covenant wallet for AI agents.
+// Satchel — a spending-limited covenant wallet for AI agents.
 //
 // The vault is a single UTXO holding BCH plus a mutable "state" NFT. Its 12-byte commitment is:
 //   periodStart (4 bytes, LE, block height) || spent (8 bytes, LE, satoshis spent in this period)
 //
 // The agent may spend at most `capPerPeriod` satoshis (miner fees included) per `periodBlocks`
 // blocks, and only to recipients in the allowlist. The owner can always spend everything.
-contract AgentVault(
+contract Satchel(
     pubkey ownerPk,
     pubkey agentPk,
     int capPerPeriod,

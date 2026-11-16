@@ -15,7 +15,7 @@ import {
   hash256,
   flattenBinArray,
 } from "@bitauth/libauth";
-import artifact from "./contract/AgentVault.artifact.json";
+import artifact from "./contract/Satchel.artifact.json";
 
 export const DUST = 1000n; // vault output keeps at least this many sats (token output)
 export const MIN_PAYMENT = 546n;
