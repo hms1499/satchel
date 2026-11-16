@@ -42,6 +42,14 @@ is committed and imported by both the client and the server.
 - `src/lib/server/*`: server only. Agent and provider key derivation (`keys.ts`), Electrum, and the x402 pay-per-call protocol.
 - `src/lib/tools.ts`: the paid tool catalog (prices in sats).
 - `src/lib/config.ts`: network, explorer links, defaults, and banner links (from env).
+- `src/lib/descriptor.ts`: the client-held vault descriptor (params, agentIndex, token). Validated by zod on the server.
+- `src/lib/server/agent-wallet.ts`: `payFromVault` (serialized per vault, never pre-checks the budget, so the covenant
+  is the enforcer). `paid-client.ts` handles the 402 → pay → retry flow. `agent-runner.ts` runs the AI SDK
+  `ToolLoopAgent`, or a scripted plan when no LLM key is set.
+- `src/app/api/*`: `config`, `chain` (Electrum proxy for the browser), `agent/register|run|attack`, `vault/status`, `tools/[tool]`.
+- `src/lib/client/*`: browser-only code. `wallet.ts` handles WizardConnect accounts, UTXO scan, genesis and withdraw signing.
+  `chain.ts` holds the HTTP `NetworkProvider`.
+- `scripts/chipnet-e2e.mts`: full on-chain run on chipnet with a local test owner key (`address`, `run`).
 
 ## Covenant invariants (do not break)
 

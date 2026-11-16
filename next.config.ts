@@ -1,10 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
   reactCompiler: true,
+  // Electrum (ws) client must stay a server-side external in route handlers.
+  serverExternalPackages: ["@electrum-cash/network", "ws"],
   turbopack: {
     rules: {
       "*.css": {
