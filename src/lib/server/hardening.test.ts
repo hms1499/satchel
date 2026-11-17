@@ -1,35 +1,13 @@
 // Pre-deploy hardening (docs/superpowers/specs/2026-11-17-predeploy-hardening.md).
 // vi.resetModules() simulates a fresh serverless instance (empty in-memory state).
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { MockNetworkProvider, SignatureTemplate, randomUtxo, type SpendableUtxo } from "cashscript";
+import { SignatureTemplate, randomUtxo, type SpendableUtxo } from "cashscript";
+import { NodeLikeProvider } from "../test-utils/node-like-provider";
 import { binToHex, decodeTransaction, encodeCashAddress, encodeTransaction, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
 
 process.env.AGENT_MASTER_SEED ??= "hardening-agent-seed-0123456789abcdef0123456789ab";
 process.env.PROVIDER_SEED ??= "hardening-provider-seed-0123456789abcdef0123456789";
 
-/** Mock chain that behaves like a BCHN node + a lagging Electrum index. */
-class NodeLikeProvider extends MockNetworkProvider {
-  /** While > 0, getUtxos answers from `stale` (and counts down). */
-  lagCalls = 0;
-  stale = new Map<string, SpendableUtxo[]>();
-  spent = new Set<string>();
-  async getUtxos(address: string) {
-    if (this.lagCalls > 0 && this.stale.has(address)) {
-      this.lagCalls--;
-      return this.stale.get(address)!;
-    }
-    return super.getUtxos(address);
-  }
-  async sendRawTransaction(hex: string) {
-    const tx = decodeTransaction(hexToBin(hex));
-    if (typeof tx === "string") return super.sendRawTransaction(hex);
-    const outpoints = tx.inputs.map((i) => `${binToHex(i.outpointTransactionHash)}:${i.outpointIndex}`);
-    if (outpoints.some((o) => this.spent.has(o))) throw new Error("the transaction was rejected by network rules.\n\ntxn-mempool-conflict (code 18)");
-    const txid = await super.sendRawTransaction(hex);
-    outpoints.forEach((o) => this.spent.add(o));
-    return txid;
-  }
-}
 const net = { provider: new NodeLikeProvider() };
 vi.mock("./electrum", () => ({ getProvider: () => net.provider }));
 

@@ -4,6 +4,9 @@ import { NETWORK } from "../config";
 import { lockingBytecodeOf } from "../vault";
 import { hmac } from "./keys";
 import { getProvider } from "./electrum";
+import { memoForChallenge, type Challenge } from "../x402-client";
+
+export { MEMO_PREFIX_HEX, memoForChallenge, encodePaymentHeader, type Challenge } from "../x402-client";
 
 /**
  * Pay-per-call over HTTP 402 on Bitcoin Cash.
@@ -17,19 +20,8 @@ import { getProvider } from "./electrum";
  * header can be replayed only for that identical request, which makes retries idempotent and needs no shared state:
  * it is correct on any number of serverless instances.
  */
-export const MEMO_PREFIX_HEX = binToHex(new TextEncoder().encode("SC402"));
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
-export interface Challenge {
-  resource: string;
-  payTo: string;
-  amount: string; // sats, decimal string
-  nonce: string; // 16 bytes hex
-  expires: number; // unix ms
-  request: string; // sha256 hex of the canonical request (see requestDigest)
-  network: string;
-  sig: string;
-}
 
 /**
  * HMAC over the signed fields only, in a fixed order. Extra fields a client echoes back (such as `scheme`
@@ -69,13 +61,7 @@ export function checkChallenge(challenge: Challenge | undefined, resource: strin
   return null;
 }
 
-export function memoForChallenge(c: Pick<Challenge, "nonce">): string {
-  return MEMO_PREFIX_HEX + c.nonce;
-}
 
-export function encodePaymentHeader(challenge: Challenge, txid: string): string {
-  return Buffer.from(JSON.stringify({ challenge, txid })).toString("base64");
-}
 
 export async function verifyPayment(
   header: string | null,
