@@ -3,16 +3,15 @@ import {
   createPaywall,
   InputError,
   wellKnownResponse,
-  type BchNetwork,
   type CatalogEntry,
   type PaidRoute,
 } from "satchel-pay-server";
+import { loadSellerEnv } from "./env";
 import { decodeAddress, decodeScript } from "./decoder";
 
-const network: BchNetwork = (process.env.SELLER_NETWORK ?? "mainnet") === "chipnet" ? "chipnet" : "mainnet";
-const payTo = process.env.SELLER_PAY_TO ?? "";
+const { network, payTo, secret } = loadSellerEnv(process.env);
 // createPaywall throws unless SELLER_SECRET is a string of at least 32 characters.
-const pay = createPaywall({ network, secret: process.env.SELLER_SECRET as string, log: (e) => console.log(JSON.stringify(e)) });
+const pay = createPaywall({ network, secret: secret as string, log: (e) => console.log(JSON.stringify(e)) });
 
 const PRICE = 500n;
 

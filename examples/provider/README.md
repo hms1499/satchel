@@ -18,9 +18,9 @@ description.
 
 | Variable | Meaning |
 | --- | --- |
-| `SELLER_NETWORK` | `mainnet` (default) or `chipnet` |
+| `SELLER_NETWORK` | exactly `mainnet` (default when unset) or `chipnet`; anything else fails at startup |
 | `SELLER_SECRET` | at least 32 characters of randomness (`openssl rand -hex 32`); signs the challenges, keep it secret |
-| `SELLER_PAY_TO` | your CashAddr for the chosen network; payments go straight to it |
+| `SELLER_PAY_TO` | your CashAddr (`bitcoincash:` on mainnet, `bchtest:` on chipnet); required, checked at startup; payments go straight to it |
 
 ## Run locally
 
