@@ -1,4 +1,5 @@
-import { binToHex, cashAddressToLockingBytecode, decodeTransaction, hexToBin } from "@bitauth/libauth";
+import { base64ToBin, binToHex, binToUtf8, cashAddressToLockingBytecode, decodeTransaction, hexToBin, isBase64 } from "@bitauth/libauth";
+import { checkChallenge } from "./challenge";
 import { memoForChallenge, type Challenge } from "./protocol";
 
 /**
@@ -26,4 +27,40 @@ export function verifyPaymentTx(rawHex: string, challenge: Challenge): string | 
     return "transaction is missing the SC402 nonce memo";
   }
   return null;
+}
+
+function decodeHeader(header: string): { challenge?: Challenge; txid?: unknown } | undefined {
+  if (!isBase64(header)) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(binToUtf8(base64ToBin(header)));
+    return parsed && typeof parsed === "object" ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Verifies an `X-Payment` header (`base64(JSON {challenge, txid})`) for one request: the challenge's signature,
+ * resource, request binding and expiry, then the paying transaction (fetched with `getTransaction`, accepted at 0-conf).
+ */
+export async function verifyPaymentHeader(
+  header: string,
+  o: { resource: string; request: string; secret: string; getTransaction: (txid: string) => Promise<string>; now?: number },
+): Promise<{ ok: true; txid: string; challenge: Challenge } | { ok: false; error: string }> {
+  const parsed = decodeHeader(header);
+  if (!parsed) return { ok: false, error: "malformed X-Payment header" };
+  const { challenge, txid } = parsed;
+  const invalid = checkChallenge(challenge, { resource: o.resource, request: o.request, secret: o.secret, now: o.now });
+  if (invalid || !challenge) return { ok: false, error: invalid ?? "invalid challenge signature" };
+  if (typeof txid !== "string" || !/^[0-9a-f]{64}$/.test(txid)) return { ok: false, error: "invalid txid" };
+
+  let rawHex: string;
+  try {
+    rawHex = await o.getTransaction(txid);
+  } catch {
+    return { ok: false, error: "transaction not found on the network" };
+  }
+  const unpaid = verifyPaymentTx(rawHex, challenge);
+  if (unpaid) return { ok: false, error: unpaid };
+  return { ok: true, txid, challenge };
 }

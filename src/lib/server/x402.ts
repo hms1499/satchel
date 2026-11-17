@@ -1,4 +1,3 @@
-import { base64ToBin, binToUtf8, isBase64 } from "@bitauth/libauth";
 import * as kit from "../../../provider-kit/src/index";
 import type { Challenge } from "../../../provider-kit/src/index";
 import { NETWORK } from "../config";
@@ -28,32 +27,19 @@ export function checkChallenge(challenge: Challenge | undefined, resource: strin
   return kit.checkChallenge(challenge, { resource, request, secret: providerSeed() });
 }
 
-/** Verifies an `X-Payment` header for one request: the challenge, then the paying transaction (0-conf). */
+/** Verifies an `X-Payment` header for one request (satchel-pay-server `verifyPaymentHeader`). */
 export async function verifyPayment(
   header: string | null,
   resource: string,
   request: string,
 ): Promise<{ ok: true; txid: string; nonce: string; expires: number } | { ok: false; error: string }> {
   if (!header) return { ok: false, error: "missing X-Payment header" };
-  let parsed: { challenge?: Challenge; txid?: unknown } | null;
-  try {
-    parsed = isBase64(header) ? JSON.parse(binToUtf8(base64ToBin(header))) : null;
-  } catch {
-    parsed = null;
-  }
-  if (!parsed || typeof parsed !== "object") return { ok: false, error: "malformed X-Payment header" };
-  const { challenge, txid } = parsed;
-  const invalid = checkChallenge(challenge, resource, request);
-  if (invalid || !challenge) return { ok: false, error: invalid ?? "invalid challenge signature" };
-  if (typeof txid !== "string" || !/^[0-9a-f]{64}$/.test(txid)) return { ok: false, error: "invalid txid" };
-
-  let rawHex: string;
-  try {
-    rawHex = await getProvider().getRawTransaction(txid);
-  } catch {
-    return { ok: false, error: "transaction not found on the network" };
-  }
-  const unpaid = kit.verifyPaymentTx(rawHex, challenge);
-  if (unpaid) return { ok: false, error: unpaid };
-  return { ok: true, txid, nonce: challenge.nonce, expires: challenge.expires };
+  const payment = await kit.verifyPaymentHeader(header, {
+    resource,
+    request,
+    secret: providerSeed(),
+    getTransaction: (txid) => getProvider().getRawTransaction(txid),
+  });
+  if (!payment.ok) return payment;
+  return { ok: true, txid: payment.txid, nonce: payment.challenge.nonce, expires: payment.challenge.expires };
 }

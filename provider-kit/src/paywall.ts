@@ -1,9 +1,8 @@
-import { base64ToBin, binToUtf8, isBase64 } from "@bitauth/libauth";
 import { ResultCache } from "./cache";
-import { checkChallenge, createChallenge, requestDigest } from "./challenge";
+import { createChallenge, requestDigest } from "./challenge";
 import { electrumTransactionFetcher } from "./electrum";
-import { SCHEME, type BchNetwork, type Challenge } from "./protocol";
-import { verifyPaymentTx } from "./verify";
+import { SCHEME, type BchNetwork } from "./protocol";
+import { verifyPaymentHeader } from "./verify";
 
 /** Bad input from the caller. Thrown from `validate` (before any 402) or from `handler` (after payment). */
 export class InputError extends Error {
@@ -65,16 +64,6 @@ async function readParams(req: Request): Promise<URLSearchParams> {
   return new URLSearchParams(entries.map(([k, v]) => [k, String(v)]));
 }
 
-function decodeHeader(header: string): { challenge?: Challenge; txid?: string } | undefined {
-  if (!isBase64(header)) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(binToUtf8(base64ToBin(header)));
-    return parsed && typeof parsed === "object" ? parsed : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Pay-per-call over HTTP 402 on Bitcoin Cash (bch-sc402). `handle` answers 402 with a signed challenge, verifies
  * the `X-Payment` header and the paying transaction, and runs the route's handler once per payment.
@@ -127,23 +116,15 @@ export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route:
       log({ evt: "tool", tool: route.name, status: 402, error, ms: now() - started });
       return json({ error }, 402);
     };
-    const parsed = decodeHeader(header);
-    if (!parsed) return fail("malformed X-Payment header");
-    const { challenge, txid } = parsed;
-    const invalid = checkChallenge(challenge, { resource: route.resource, request: digest, secret: cfg.secret, now: now() });
-    if (invalid || !challenge) return fail(invalid ?? "invalid challenge signature");
-    if (typeof txid !== "string" || !/^[0-9a-f]{64}$/.test(txid)) return fail("invalid txid");
-    const paid = challenge;
-    const paidWith = txid;
-
-    let rawHex: string;
-    try {
-      rawHex = await getTransaction(paidWith);
-    } catch {
-      return fail("transaction not found on the network");
-    }
-    const unpaid = verifyPaymentTx(rawHex, paid);
-    if (unpaid) return fail(unpaid);
+    const payment = await verifyPaymentHeader(header, {
+      resource: route.resource,
+      request: digest,
+      secret: cfg.secret,
+      getTransaction,
+      now: now(),
+    });
+    if (!payment.ok) return fail(payment.error);
+    const { challenge: paid, txid: paidWith } = payment;
 
     // A replay of a paid request (retry) gets the stored response; the handler runs once per payment.
     const cached = cache.get(paid.nonce);

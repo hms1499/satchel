@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin, utf8ToBin } from "@bitauth/libauth";
+import { binToBase64, binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin, utf8ToBin } from "@bitauth/libauth";
 import { createChallenge } from "./challenge";
 import { MEMO_PREFIX_HEX, memoForChallenge } from "./protocol";
-import { verifyPaymentTx } from "./verify";
+import { verifyPaymentHeader, verifyPaymentTx } from "./verify";
 
 const PAY_TO = "bchtest:qzhw4v5cag3h98392ktmmaean9wysfmdvuc0drgy7h";
 
@@ -123,5 +123,43 @@ describe("verifyPaymentTx", () => {
 
   it("rejects bytes that are not a transaction", () => {
     expect(verifyPaymentTx("00", challenge)).toBe("could not decode transaction");
+  });
+});
+
+describe("verifyPaymentHeader", () => {
+  const TXID = "ab".repeat(32);
+  const paidTx = txHex([{ lockingBytecode: lockingBytecode(PAY_TO), valueSatoshis: 1_000n }, memo]);
+  const header = (body: unknown) => binToBase64(utf8ToBin(JSON.stringify(body)));
+  const opts = (getTransaction: (txid: string) => Promise<string> = async () => paidTx) => ({
+    resource: CHALLENGE_OPTS.resource,
+    request: CHALLENGE_OPTS.request,
+    secret: CHALLENGE_OPTS.secret,
+    getTransaction,
+  });
+
+  it("accepts a valid header and returns the txid and the challenge", async () => {
+    const fetched: string[] = [];
+    const result = await verifyPaymentHeader(header({ challenge, txid: TXID }), opts(async (txid) => (fetched.push(txid), paidTx)));
+    expect(result).toEqual({ ok: true, txid: TXID, challenge });
+    expect(fetched).toEqual([TXID]);
+  });
+
+  it("refuses a malformed header", async () => {
+    expect(await verifyPaymentHeader("not base64!", opts())).toEqual({ ok: false, error: "malformed X-Payment header" });
+    expect(await verifyPaymentHeader(binToBase64(utf8ToBin("{not json")), opts())).toEqual({ ok: false, error: "malformed X-Payment header" });
+  });
+
+  it("refuses a header paid for a different request", async () => {
+    const o = { ...opts(), request: "bb".repeat(32) };
+    expect(await verifyPaymentHeader(header({ challenge, txid: TXID }), o)).toEqual({ ok: false, error: "payment is for a different request" });
+  });
+
+  it("refuses a missing challenge, a bad txid, an unknown tx and an unpaid tx", async () => {
+    expect(await verifyPaymentHeader(header({ txid: TXID }), opts())).toEqual({ ok: false, error: "invalid challenge signature" });
+    expect(await verifyPaymentHeader(header({ challenge, txid: "xyz" }), opts())).toEqual({ ok: false, error: "invalid txid" });
+    const offline = opts(async () => Promise.reject(new Error("offline")));
+    expect(await verifyPaymentHeader(header({ challenge, txid: TXID }), offline)).toEqual({ ok: false, error: "transaction not found on the network" });
+    const unpaid = opts(async () => txHex([{ lockingBytecode: OTHER_BYTECODE, valueSatoshis: 1_000n }, memo]));
+    expect(await verifyPaymentHeader(header({ challenge, txid: TXID }), unpaid)).toEqual({ ok: false, error: "transaction does not pay the required amount to payTo" });
   });
 });
