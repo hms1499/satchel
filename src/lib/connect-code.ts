@@ -12,6 +12,8 @@ const ConnectInfoSchema = z.object({
   network: z.enum(["mainnet", "chipnet"]),
   params: DescriptorSchema.shape.params,
   genesisTxid: z.string().regex(/^[0-9a-f]{64}$/).optional(),
+  labels: DescriptorSchema.shape.labels,
+  sellers: DescriptorSchema.shape.sellers,
 });
 
 export type ConnectInfo = z.infer<typeof ConnectInfoSchema>;
@@ -30,9 +32,9 @@ function fromBase64Url(b64: string): string {
 
 export function encodeConnectCode(info: ConnectInfo): string {
   // Copy only the public fields, so nothing else (e.g. an access token) can leak into the code.
-  const { v, network, params, genesisTxid } = info;
+  const { v, network, params, genesisTxid, labels, sellers } = info;
   const { ownerPk, agentPk, capPerPeriod, periodBlocks, allowlist } = params;
-  return PREFIX + toBase64Url(JSON.stringify({ v, network, params: { ownerPk, agentPk, capPerPeriod, periodBlocks, allowlist }, genesisTxid }));
+  return PREFIX + toBase64Url(JSON.stringify({ v, network, params: { ownerPk, agentPk, capPerPeriod, periodBlocks, allowlist }, genesisTxid, labels, sellers }));
 }
 
 export function decodeConnectCode(code: string): { ok: true; info: ConnectInfo } | { ok: false; error: string } {

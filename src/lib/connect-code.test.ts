@@ -44,4 +44,27 @@ describe("connect code", () => {
     expect(decoded.ok).toBe(true);
     expect(JSON.stringify(decoded)).not.toContain("cd".repeat(32));
   });
+
+  it("round-trips labels and seller origins", () => {
+    const withMeta: ConnectInfo = {
+      ...info,
+      labels: { "bitcoincash:qzhw4v5cag3h98392ktmmaean9wysfmdvuuafy2net": "Alice" },
+      sellers: ["https://satchel-sigma.vercel.app"],
+    };
+    expect(decodeConnectCode(encodeConnectCode(withMeta))).toEqual({ ok: true, info: withMeta });
+  });
+
+  it("a code from 0.1.0 without labels still decodes", () => {
+    // Literal output of encodeConnectCode(info) before labels/sellers existed.
+    const legacy =
+      "satchel1:eyJ2IjoxLCJuZXR3b3JrIjoibWFpbm5ldCIsInBhcmFtcyI6eyJvd25lclBrIjoiMDIxMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExMTExIiwiYWdlbnRQayI6IjAzMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMiIsImNhcFBlclBlcmlvZCI6IjgwMDAiLCJwZXJpb2RCbG9ja3MiOiIxNDQiLCJhbGxvd2xpc3QiOlsiYml0Y29pbmNhc2g6cXpodzR2NWNhZzNoOTgzOTJrdG1tYWVhbjl3eXNmbWR2dXVhZnkybmV0Il19LCJnZW5lc2lzVHhpZCI6ImFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWJhYmFiYWIifQ";
+    expect(decodeConnectCode(legacy)).toEqual({ ok: true, info });
+  });
+
+  it("drops unknown fields", () => {
+    const code = encodeConnectCode({ ...info, token: "ff".repeat(32) } as ConnectInfo);
+    const res = decodeConnectCode(code);
+    expect(res.ok).toBe(true);
+    expect(JSON.stringify(res)).not.toContain("token");
+  });
 });

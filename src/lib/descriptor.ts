@@ -22,6 +22,10 @@ export const DescriptorSchema = z.object({
     periodBlocks: z.string().regex(/^\d+$/),
     allowlist: z.array(z.string().min(10)).min(1).max(8),
   }),
+  // Display names for payees, keyed by canonical (non-token) CashAddr.
+  labels: z.record(z.string(), z.string().min(1).max(32)).optional(),
+  // Origins of third-party sellers this vault's agent may buy from (used by satchel-pay-mcp).
+  sellers: z.array(z.string().url()).max(8).optional(),
   createdAt: z.number().optional(),
   genesisTxid: z.string().optional(),
   recovered: z.boolean().optional(),
