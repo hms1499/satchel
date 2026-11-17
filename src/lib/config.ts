@@ -17,6 +17,6 @@ export const DEFAULTS = {
 /** Hackathon banner links (required by BCH BLAZE rules). */
 export const BANNER = {
   slides: process.env.NEXT_PUBLIC_SLIDES_URL ?? "#",
-  repo: process.env.NEXT_PUBLIC_REPO_URL ?? "#",
+  repo: process.env.NEXT_PUBLIC_REPO_URL || "https://github.com/hms1499/satchel",
   emberAddress: process.env.NEXT_PUBLIC_EMBER_ADDRESS ?? "",
 };
