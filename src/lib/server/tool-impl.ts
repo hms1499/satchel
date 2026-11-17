@@ -2,6 +2,7 @@ import { generateText } from "ai";
 import { PAID_TOOLS, type ToolName } from "../tools";
 import { AGENT_MODEL, hasLlm } from "./llm";
 import { InputError as ToolInputError } from "../../../provider-kit/src/index";
+import { addressInfo, checkAddress, checkTxid, electrumRpc, fetchTransaction, txInfo, type Rpc } from "./chain-tools";
 
 /** Bad input: answered 400 by the paywall, before payment from `validateToolInput`, after it from `runTool`. */
 export { ToolInputError };
@@ -101,9 +102,14 @@ const COIN_ID = /^[a-z0-9-]{2,60}$/;
 
 /**
  * Checks a request before any payment is asked for, so a caller never pays for a call that can only fail:
- * unknown parameter names (an agent guessing names), missing or invalid required values.
+ * unknown parameter names (an agent guessing names), missing or invalid required values, an unknown txid.
+ * `deps.rpc` is the Electrum client (stubbed in tests).
  */
-export async function validateToolInput(name: ToolName, params: URLSearchParams): Promise<void> {
+export async function validateToolInput(
+  name: ToolName,
+  params: URLSearchParams,
+  deps: { rpc: Rpc } = { rpc: electrumRpc },
+): Promise<void> {
   const expected = Object.keys(PAID_TOOLS[name].params);
   for (const key of params.keys()) {
     if (!expected.includes(key)) throw new ToolInputError(`unknown parameter "${key}"; expected: ${expected.join(", ")}`);
@@ -113,6 +119,10 @@ export async function validateToolInput(name: ToolName, params: URLSearchParams)
     if (id !== null && !COIN_ID.test(id.toLowerCase())) throw new ToolInputError("id must be a CoinGecko coin id, e.g. bitcoin-cash");
   } else if (name === "web-reader") {
     isPublicHttpsUrl(params.get("url") ?? "");
+  } else if (name === "bch-address") {
+    checkAddress(params.get("address"));
+  } else if (name === "bch-tx") {
+    await fetchTransaction(checkTxid(params.get("txid")), deps.rpc);
   } else if (!params.get("question")) {
     throw new ToolInputError("question is required");
   }
@@ -126,5 +136,9 @@ export async function runTool(name: ToolName, params: URLSearchParams): Promise<
       return webReader(params);
     case "deep-analysis":
       return deepAnalysis(params);
+    case "bch-address":
+      return addressInfo(params.get("address") ?? "", electrumRpc);
+    case "bch-tx":
+      return txInfo(params.get("txid") ?? "", electrumRpc);
   }
 }

@@ -21,6 +21,23 @@ export const PAID_TOOLS = {
     provider: 2,
     params: { question: "What to analyse (required)", material: "The facts or text to analyse" },
   },
+  // Append only: a tool's provider index fixes its payout address, so existing indexes must never move.
+  "bch-address": {
+    title: "BCH address lookup",
+    description:
+      "Balance (confirmed and unconfirmed), UTXO count, CashTokens held by category and the last 10 transactions of a BCH address.",
+    price: 800n,
+    provider: 3,
+    params: { address: "A BCH address (CashAddr)" },
+  },
+  "bch-tx": {
+    title: "BCH transaction decoder",
+    description:
+      "Decodes a BCH transaction: confirmations, inputs, outputs (address, value, token data), OP_RETURN data, size and fee.",
+    price: 500n,
+    provider: 4,
+    params: { txid: "A transaction id (64 hex chars)" },
+  },
 } as const;
 
 /**
@@ -31,4 +48,4 @@ export const EST_FEE_PER_CALL = 700n;
 
 export type ToolName = keyof typeof PAID_TOOLS;
 export const TOOL_NAMES = Object.keys(PAID_TOOLS) as ToolName[];
-export const PROVIDER_COUNT = 3;
+export const PROVIDER_COUNT = 5;
