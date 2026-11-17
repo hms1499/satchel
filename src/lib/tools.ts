@@ -49,3 +49,14 @@ export const EST_FEE_PER_CALL = 700n;
 export type ToolName = keyof typeof PAID_TOOLS;
 export const TOOL_NAMES = Object.keys(PAID_TOOLS) as ToolName[];
 export const PROVIDER_COUNT = 5;
+
+/** The tools Satchel's hosted agent calls (`agent-runner.ts`). The chain tools are for MCP agents. */
+export const HOSTED_AGENT_TOOLS = ["crypto-price", "web-reader", "deep-analysis"] as const satisfies readonly ToolName[];
+export type HostedToolName = (typeof HOSTED_AGENT_TOOLS)[number];
+
+/**
+ * Whether a tool's payee is ticked by default when creating a vault. A hosted vault only needs the hosted agent's
+ * tools (each extra payee makes every payment bigger); an external (MCP) vault may call any tool.
+ */
+export const defaultAllowed = (name: ToolName, external: boolean): boolean =>
+  external || (HOSTED_AGENT_TOOLS as readonly ToolName[]).includes(name);

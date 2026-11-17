@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { binToHex, encodeCashAddress, encodeTransaction, hashTransaction, hexToBin, sha256, utf8ToBin } from "@bitauth/libauth";
 import { NETWORK } from "../config";
 import { prefixFor } from "../payees";
-import { PAID_TOOLS, PROVIDER_COUNT, TOOL_NAMES } from "../tools";
+import { HOSTED_AGENT_TOOLS, PAID_TOOLS, PROVIDER_COUNT, TOOL_NAMES, defaultAllowed } from "../tools";
 import { addressInfo, txInfo, withTimeout, type Rpc } from "./chain-tools";
 import { ToolInputError, validateToolInput } from "./tool-impl";
 
@@ -223,6 +223,49 @@ describe("bch-tx", () => {
     expect(info.outputs).toHaveLength(3);
   });
 
+  it("settles every parent fetch: a missing second parent while the first is pending leaves no unhandled rejection", async () => {
+    const otherParentBin = encodeTransaction({
+      version: 2,
+      locktime: 0,
+      inputs: [{ outpointTransactionHash: new Uint8Array(32).fill(8), outpointIndex: 0, sequenceNumber: 0xffffffff, unlockingBytecode: new Uint8Array() }],
+      outputs: [{ lockingBytecode: p2pkhBytecode(4), valueSatoshis: 2_000n }],
+    });
+    const otherParentId = hashTransaction(otherParentBin); // never served: the "missing" parent
+    const twoParentsBin = encodeTransaction({
+      version: 2,
+      locktime: 0,
+      inputs: [
+        { outpointTransactionHash: hexToBin(parentId), outpointIndex: 0, sequenceNumber: 0xffffffff, unlockingBytecode: Uint8Array.from([0x51]) },
+        { outpointTransactionHash: hexToBin(otherParentId), outpointIndex: 0, sequenceNumber: 0xffffffff, unlockingBytecode: Uint8Array.from([0x51]) },
+      ],
+      outputs: [{ lockingBytecode: p2pkhBytecode(9), valueSatoshis: 11_000n }],
+    });
+    const twoParentsId = hashTransaction(twoParentsBin);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const { rpc } = stub({
+        "blockchain.transaction.get": async (txid) => {
+          if (txid === twoParentsId) return binToHex(twoParentsBin);
+          if (txid === parentId) {
+            await new Promise((r) => setTimeout(r, 20)); // the first parent is still pending…
+            return binToHex(parentBin);
+          }
+          throw new Error(NOT_FOUND); // …when the second one fails
+        },
+        "blockchain.transaction.get_height": () => 335_368,
+        "blockchain.headers.get_tip": () => ({ height: 335_370, hex: "00" }),
+      });
+      const info = await txInfo(twoParentsId, rpc);
+      expect(info.fee).toBeNull();
+      await new Promise((r) => setTimeout(r, 50)); // let Node report any rejection nobody handled
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("rejects a malformed txid with a 400 before payment", async () => {
     const { rpc, calls } = electrum();
     for (const txid of ["xyz", "", childId.toUpperCase(), `${childId}00`]) {
@@ -274,5 +317,11 @@ describe("catalog", () => {
     expect(PAID_TOOLS["bch-tx"].price).toBe(500n);
     expect(Object.keys(PAID_TOOLS["bch-address"].params)).toEqual(["address"]);
     expect(Object.keys(PAID_TOOLS["bch-tx"].params)).toEqual(["txid"]);
+  });
+
+  it("a hosted vault allowlists only the hosted agent's tools by default; an external (MCP) vault all of them", () => {
+    expect(HOSTED_AGENT_TOOLS).toEqual(["crypto-price", "web-reader", "deep-analysis"]);
+    expect(TOOL_NAMES.filter((n) => defaultAllowed(n, false))).toEqual(["crypto-price", "web-reader", "deep-analysis"]);
+    expect(TOOL_NAMES.filter((n) => defaultAllowed(n, true))).toEqual(TOOL_NAMES);
   });
 });

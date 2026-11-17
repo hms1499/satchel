@@ -1,6 +1,6 @@
 import { ToolLoopAgent, isStepCount, tool } from "ai";
 import { z } from "zod";
-import type { ToolName } from "../tools";
+import type { HostedToolName, ToolName } from "../tools";
 import type { openDescriptor } from "./agent-wallet";
 import { AGENT_MODEL, hasLlm } from "./llm";
 import { paidCall, type Emit } from "./paid-client";
@@ -18,7 +18,7 @@ function summarize(tool: ToolName, result: unknown): string {
 }
 
 function makeTools(origin: string, opened: Opened, emit: Emit) {
-  const call = async (name: ToolName, body: Record<string, string>) => {
+  const call = async (name: HostedToolName, body: Record<string, string>) => {
     const res = await paidCall(origin, opened, name, body, emit);
     if (res.ok) emit({ type: "tool-result", tool: name, summary: summarize(name, res.result) });
     return res.ok ? res.result : { error: res.error };

@@ -212,19 +212,22 @@ function decode(raw: string) {
 /** Sum of the spent outputs minus the outputs; null when any input cannot be fetched or there are too many. */
 async function computeFee(inputs: TxInfo["inputs"], outputTotal: bigint, rpc: Rpc): Promise<string | null> {
   if (inputs.length === 0 || inputs.length > MAX_FEE_INPUTS) return null;
-  try {
-    const parents = new Map<string, Promise<ReturnType<typeof decode>>>();
-    for (const { txid } of inputs) if (!parents.has(txid)) parents.set(txid, fetchTransaction(txid, rpc).then(decode));
-    let inputTotal = 0n;
-    for (const { txid, vout } of inputs) {
-      const spent = (await parents.get(txid)!).outputs[vout];
-      if (!spent) return null;
-      inputTotal += spent.valueSatoshis;
-    }
-    return (inputTotal - outputTotal).toString();
-  } catch {
-    return null; // a coinbase input, a pruned or unknown parent, or an Electrum hiccup
+  // Settle every fetch before reading any: a rejection must never be left without a handler.
+  const ids = [...new Set(inputs.map((i) => i.txid))];
+  const settled = await Promise.allSettled(ids.map((txid) => fetchTransaction(txid, rpc).then(decode)));
+  const parents = new Map<string, ReturnType<typeof decode>>();
+  for (const [i, result] of settled.entries()) {
+    // A coinbase input, a pruned or unknown parent, or an Electrum hiccup: no fee.
+    if (result.status === "rejected") return null;
+    parents.set(ids[i], result.value);
   }
+  let inputTotal = 0n;
+  for (const { txid, vout } of inputs) {
+    const spent = parents.get(txid)!.outputs[vout];
+    if (!spent) return null;
+    inputTotal += spent.valueSatoshis;
+  }
+  return (inputTotal - outputTotal).toString();
 }
 
 export async function txInfo(txid: string, rpc: Rpc): Promise<TxInfo> {

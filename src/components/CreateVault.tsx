@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { DEFAULTS, NETWORK } from "@/lib/config";
 import { buildAllowlist } from "@/lib/allowlist";
+import { defaultAllowed, type ToolName } from "@/lib/tools";
 import { fmtSats, type SellerInfo, type ToolInfo } from "@/lib/client/agent";
 import type { CreateVaultInput } from "@/lib/client/wallet";
 import { CustomPayees, type PayeeRow } from "./CustomPayees";
@@ -41,7 +42,7 @@ export function CreateVault({
   const [customRows, setCustomRows] = useState<PayeeRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const isOn = (name: string) => selected[name] ?? true;
+  const isOn = (name: string) => selected[name] ?? defaultAllowed(name as ToolName, Boolean(externalAgentPk));
   const allowed = tools.filter((t) => isOn(t.name));
   const chosenSellers = sellers.filter((_, i) => pickedSellers[i]);
   const payeeNames = [
