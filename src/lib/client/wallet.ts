@@ -7,6 +7,7 @@ import { NETWORK } from "../config";
 import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, lockingBytecodeOf, type VaultParams } from "../vault";
 import { paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
 import { encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
+import { toRelaySignRequest } from "../wc-relay";
 import { broadcast, getBlockHeight, getHistory, getTransactions, getUtxosFor, httpProvider } from "./chain";
 
 const PREFIX = NETWORK === "mainnet" ? "bitcoincash" : "bchtest";
@@ -66,7 +67,8 @@ async function signAndBroadcast(
   inputPaths: [number, string, number][],
   userPrompt: string,
 ): Promise<string> {
-  const transaction = builder.generateWcTransactionObject({ broadcast: false, userPrompt });
+  // The relay JSON-encodes the request, so send the relay format (hex tx, extended-JSON source outputs).
+  const transaction = toRelaySignRequest(builder.generateWcTransactionObject({ broadcast: false, userPrompt }));
   const response = await manager.signTransaction({ transaction: transaction as never, inputPaths });
   if (response.error) throw new Error(`Wallet: ${response.error}`);
   if (!response.signedTransaction) throw new Error("The wallet did not return a signed transaction");
