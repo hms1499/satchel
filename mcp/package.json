@@ -1,0 +1,44 @@
+{
+  "name": "satchel-pay-mcp",
+  "version": "0.1.0",
+  "description": "MCP server that lets your own AI agent pay for APIs from a Satchel vault on Bitcoin Cash: a spending cap and payee allowlist enforced by consensus, with the agent key kept on your machine.",
+  "type": "module",
+  "bin": {
+    "satchel-pay-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "keywords": [
+    "mcp",
+    "bitcoin-cash",
+    "bch",
+    "ai-agent",
+    "payments",
+    "x402",
+    "covenant"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hms1499/satchel.git",
+    "directory": "agentvault/mcp"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@bitauth/libauth": "3.1.0-next.8",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "cashscript": "^0.14.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0"
+  }
+}

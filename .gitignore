@@ -47,3 +47,7 @@ next-env.d.ts
 
 # plan execution scratch (superpowers)
 .superpowers/
+
+# satchel-pay-mcp
+mcp/dist/
+mcp/node_modules/

@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // satchel-pay-mcp has its own package and typecheck; its bundle is generated.
+    "mcp/dist/**",
+    "mcp/node_modules/**",
   ]),
 ]);
 
