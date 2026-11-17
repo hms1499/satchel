@@ -51,6 +51,14 @@ is committed and imported by both the client and the server.
 - `src/app/api/*`: `config`, `chain` (Electrum proxy for the browser), `agent/register|run|attack`, `vault/status`, `tools/[tool]`.
 - `src/lib/client/*`: browser-only code. `wallet.ts` handles WizardConnect accounts, UTXO scan, genesis and withdraw signing.
   `chain.ts` holds the HTTP `NetworkProvider`.
+- `mcp/`: the `satchel-pay-mcp` package (own `package.json`, `npm install` inside it). `src/tools.ts` holds the tool logic,
+  `src/server.ts` the MCP tool definitions, `src/index.ts` the stdio entry; `npm run build` bundles to `dist/index.js` with
+  esbuild. Import `cashscript`/`@bitauth/libauth` from `mcp/src` only through `src/lib/chain-deps.ts` (one library copy).
+  Its tests run in the root `npm test`; `cd mcp && npx tsc --noEmit -p tsconfig.json` typechecks it. Mainnet e2e:
+  `cd mcp && npm run build && E2E_ALLOW_MAINNET=1 npx tsx scripts/mainnet-e2e.mts`.
+- Shared payment code used by both the hosted agent and the MCP server: `src/lib/spend.ts` (`VaultSpender`),
+  `src/lib/x402-client.ts`, `src/lib/connect-code.ts`. Vaults with `external: true` (agent index `0xffffffff`) belong
+  to a user's own agent: Satchel serves their status but never drives them.
 - `scripts/e2e.mts`: full on-chain run with a local test owner key (`address`, `run`, `sweep`, `refund`). Chipnet by default; mainnet needs `NEXT_PUBLIC_BCH_NETWORK=mainnet E2E_ALLOW_MAINNET=1`.
 
 ## Covenant invariants (do not break)

@@ -20,6 +20,18 @@ Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail) (
 4. **Try to break it.** *Overspend* and *Pay an attacker address* broadcast transactions that violate the covenant. The network rejects them, and the UI shows the raw rejection.
 5. **Withdraw** the remainder with your owner key.
 
+## Use Satchel from your own agent (MCP)
+
+[`satchel-pay-mcp`](mcp/README.md) is an MCP server that lets your own agent, in Claude, Cursor, VS Code, Codex CLI,
+Gemini CLI and other MCP clients, pay for APIs from a Satchel vault. The agent key is generated and kept on your machine;
+the covenant enforces the cap and the allowlist.
+
+```bash
+claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
+```
+
+Then ask your agent to "set up Satchel", create the vault from the link it gives you, and paste back the connect code.
+
 ## How it works
 
 ### The covenant (`contracts/Satchel.cash`, CashScript 0.14)
