@@ -17,7 +17,7 @@ const eslintConfig = defineConfig([
     "mcp/node_modules/**",
     // satchel-pay-server: same, plus the example sellers' own installs.
     "provider-kit/dist/**",
-    "examples/**/node_modules/**",
+    "examples/**",
   ]),
 ]);
 

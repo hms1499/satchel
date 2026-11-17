@@ -55,3 +55,8 @@ mcp/node_modules/
 # satchel-pay-server
 provider-kit/dist/
 provider-kit/node_modules/
+
+# example sellers
+examples/*/node_modules/
+examples/*/.vercel/
+examples/*/.env*
