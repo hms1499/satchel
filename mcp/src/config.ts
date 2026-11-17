@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { BchNetwork } from "../../src/lib/config";
 
 /** The Satchel web app (vault creation, tool catalog). Set to the production URL before publishing. */
-export const DEFAULT_SATCHEL_URL = "http://localhost:3000";
+export const DEFAULT_SATCHEL_URL = "https://satchel-sigma.vercel.app";
 
 export interface McpConfig {
   network: BchNetwork;
