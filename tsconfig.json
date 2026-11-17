@@ -38,6 +38,8 @@
   ],
   "exclude": [
     "node_modules",
-    "mcp"
+    "mcp",
+    "provider-kit",
+    "examples"
   ]
 }

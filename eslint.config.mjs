@@ -15,6 +15,9 @@ const eslintConfig = defineConfig([
     // satchel-pay-mcp has its own package and typecheck; its bundle is generated.
     "mcp/dist/**",
     "mcp/node_modules/**",
+    // satchel-pay-server: same, plus the example sellers' own installs.
+    "provider-kit/dist/**",
+    "examples/**/node_modules/**",
   ]),
 ]);
 
