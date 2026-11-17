@@ -49,7 +49,7 @@ is committed and imported by both the client and the server.
 - `src/app/api/*`: `config`, `chain` (Electrum proxy for the browser), `agent/register|run|attack`, `vault/status`, `tools/[tool]`.
 - `src/lib/client/*`: browser-only code. `wallet.ts` handles WizardConnect accounts, UTXO scan, genesis and withdraw signing.
   `chain.ts` holds the HTTP `NetworkProvider`.
-- `scripts/chipnet-e2e.mts`: full on-chain run on chipnet with a local test owner key (`address`, `run`).
+- `scripts/e2e.mts`: full on-chain run with a local test owner key (`address`, `run`, `sweep`, `refund`). Chipnet by default; mainnet needs `NEXT_PUBLIC_BCH_NETWORK=mainnet E2E_ALLOW_MAINNET=1`.
 
 ## Covenant invariants (do not break)
 

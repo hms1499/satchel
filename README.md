@@ -80,12 +80,16 @@ npm run build
 
 Without `AI_GATEWAY_API_KEY`, the agent runs a scripted plan so that the payment flow still works.
 
-### Chipnet end-to-end
+### On-chain end-to-end
 
 ```bash
-npx tsx scripts/chipnet-e2e.mts address   # prints the test owner address; fund it from a chipnet faucet
-npx tsx scripts/chipnet-e2e.mts run       # genesis → agent payments → attacks → withdraw (needs npm run dev)
+npx tsx scripts/e2e.mts address            # prints the test owner address; fund it first
+npx tsx scripts/e2e.mts run                # genesis → agent payments → attacks → withdraw (needs npm run dev)
+npx tsx scripts/e2e.mts sweep              # moves the agent's tool payments back from the provider addresses
+npx tsx scripts/e2e.mts refund <address>   # returns everything the test owner holds
 ```
+
+The script uses chipnet by default. For mainnet, set `NEXT_PUBLIC_BCH_NETWORK=mainnet` and `E2E_ALLOW_MAINNET=1` for both the dev server and the script.
 
 ## Security notes
 
