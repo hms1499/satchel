@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWizardConnect, WizardConnectQRDialog } from "@wizardconnect/react";
 import { NETWORK, txUrl } from "@/lib/config";
 import { descriptorParams, type VaultDescriptor } from "@/lib/descriptor";
@@ -38,6 +38,22 @@ export function SatchelApp() {
   }, []);
 
   const connected = wc.state === "connected" && wc.manager !== null;
+  // After a page reload the hook restores the stored session: it stays "connecting" without a QR code until the
+  // wallet answers, and connect() is ignored meanwhile. Show that state and offer a fresh pairing instead.
+  const restoring = (wc.state === "connecting" && !wc.uri) || wc.state === "reconnecting";
+  const pendingPair = useRef(false);
+  const pairAgain = async () => {
+    pendingPair.current = true;
+    await wc.disconnect(); // drops the stored session; state returns to "idle"
+  };
+  const { state: wcState, connect: wcConnect } = wc;
+  useEffect(() => {
+    // connect() must run with the post-disconnect state, so it waits for the "idle" render.
+    if (pendingPair.current && wcState === "idle") {
+      pendingPair.current = false;
+      wcConnect();
+    }
+  }, [wcState, wcConnect]);
 
   useEffect(() => {
     if (!connected || !wc.manager) return;
@@ -97,6 +113,10 @@ export function SatchelApp() {
   const onWithdraw = async () => {
     if (!descriptor) return;
     if (!wc.manager || !connected) {
+      if (restoring) {
+        setWithdrawError("Still reconnecting to your wallet. Open it, or use “Pair again” at the top to scan a new QR code.");
+        return;
+      }
       setWithdrawError("Connect the owner wallet first.");
       wc.connect();
       return;
@@ -131,6 +151,14 @@ export function SatchelApp() {
               {owner && <span className="font-mono text-muted">{shortAddress(owner)}</span>}
               <button className="ml-1 cursor-pointer text-muted underline-offset-2 hover:underline" onClick={() => wc.disconnect()}>
                 Disconnect
+              </button>
+            </div>
+          ) : restoring ? (
+            <div className="flex items-center gap-2 rounded-full border border-line bg-surface px-3.5 py-1.5 text-[13px]">
+              <span className="size-2 animate-pulse rounded-full bg-[#e8862e]" />
+              <span>Reconnecting{wc.walletName ? ` to ${wc.walletName}` : ""}… open your wallet</span>
+              <button className="ml-1 cursor-pointer font-semibold text-brand underline-offset-2 hover:underline" onClick={pairAgain}>
+                Pair again
               </button>
             </div>
           ) : (
@@ -178,8 +206,13 @@ export function SatchelApp() {
                 <li>You sign two transactions in total: create and withdraw.</li>
               </ul>
               {wc.error && <p className="text-sm text-warn-ink">{wc.error}</p>}
-              <Button className="min-h-12 self-start text-base" onClick={() => wc.connect()}>
-                Connect with WizardConnect
+              {restoring && (
+                <p className="text-sm text-body">
+                  Restoring your previous wallet session. Open your wallet app to finish, or pair again with a new QR code.
+                </p>
+              )}
+              <Button className="min-h-12 self-start text-base" onClick={() => (restoring ? pairAgain() : wc.connect())}>
+                {restoring ? "Pair again with a new QR code" : "Connect with WizardConnect"}
               </Button>
             </Card>
           </section>

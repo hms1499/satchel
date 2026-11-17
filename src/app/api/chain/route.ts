@@ -64,7 +64,10 @@ export async function POST(request: Request) {
       try {
         return Response.json({ txid: await provider.sendRawTransaction(hex) });
       } catch (e) {
-        return Response.json({ error: e instanceof Error ? e.message.split("\n")[0] : "broadcast failed" }, { status: 400 });
+        // Keep the node's full reason (Fulcrum puts it after the first line), e.g. "mandatory-script-verify-flag-failed (...)".
+        const message = e instanceof Error ? e.message.replace(/\s+/g, " ").trim() : "broadcast failed";
+        console.error(`[chain] broadcast rejected: ${message}\n[chain] tx hex: ${hex}`);
+        return Response.json({ error: message }, { status: 400 });
       }
     }
     return Response.json({ error: "unknown op" }, { status: 400 });
