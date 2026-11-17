@@ -245,7 +245,7 @@ export function SatchelApp() {
         )}
 
         {view === "app" && !closed && !descriptor && connected && config && (
-          <CreateVault tools={config.tools} walletBalance={walletBalance} busyStep={busyStep} error={createError} onCreate={onCreate} />
+          <CreateVault tools={config.tools} feePerCall={config.feePerCall} walletBalance={walletBalance} busyStep={busyStep} error={createError} onCreate={onCreate} />
         )}
 
         {view === "app" && descriptor && config && (

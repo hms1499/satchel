@@ -150,3 +150,12 @@ describe("Satchel covenant", () => {
     ).rejects.toThrow(/checkSig\(ownerSig, ownerPk\)/);
   });
 });
+
+describe("findVaultUtxo", () => {
+  it("skips outpoints it is told are already spent", async () => {
+    const ctx = await setup();
+    const key = `${ctx.vaultUtxo.txid}:${ctx.vaultUtxo.vout}`;
+    expect(await findVaultUtxo(ctx.contract, new Set([key]))).toBeUndefined();
+    expect((await findVaultUtxo(ctx.contract))?.txid).toBe(ctx.vaultUtxo.txid);
+  });
+});

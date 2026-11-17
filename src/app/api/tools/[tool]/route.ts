@@ -1,6 +1,8 @@
 import { PAID_TOOLS, type ToolName } from "@/lib/tools";
 import { providerKeys } from "@/lib/server/keys";
-import { createChallenge, verifyPayment } from "@/lib/server/x402";
+import { createChallenge, requestDigest, verifyPayment } from "@/lib/server/x402";
+import { logEvent } from "@/lib/server/log";
+import { paidResults } from "@/lib/server/result-cache";
 import { runTool, ToolInputError } from "@/lib/server/tool-impl";
 
 /**
@@ -14,19 +16,6 @@ async function handle(request: Request, ctx: { params: Promise<{ tool: string }>
   const def = PAID_TOOLS[name];
   const resource = `/api/tools/${name}`;
 
-  const header = request.headers.get("x-payment");
-  if (!header) {
-    const payTo = providerKeys()[def.provider].address;
-    const challenge = createChallenge(resource, payTo, def.price);
-    return Response.json(
-      { error: "payment required", accepts: [{ scheme: "bch-sc402", ...challenge }] },
-      { status: 402, headers: { "www-authenticate": 'BCH-SC402 realm="satchel"' } },
-    );
-  }
-
-  const payment = await verifyPayment(header, resource);
-  if (!payment.ok) return Response.json({ error: payment.error }, { status: 402 });
-
   let params: URLSearchParams;
   if (request.method === "POST") {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
@@ -34,13 +23,43 @@ async function handle(request: Request, ctx: { params: Promise<{ tool: string }>
   } else {
     params = new URL(request.url).searchParams;
   }
+  // The payment is bound to this exact request (see x402.ts): a paid header cannot buy a different call.
+  const digest = requestDigest(name, params);
+
+  const header = request.headers.get("x-payment");
+  if (!header) {
+    const payTo = providerKeys()[def.provider].address;
+    const challenge = createChallenge(resource, payTo, def.price, digest);
+    return Response.json(
+      { error: "payment required", accepts: [{ scheme: "bch-sc402", ...challenge }] },
+      { status: 402, headers: { "www-authenticate": 'BCH-SC402 realm="satchel"' } },
+    );
+  }
+
+  const started = Date.now();
+  const payment = await verifyPayment(header, resource, digest);
+  if (!payment.ok) {
+    logEvent("tool", { tool: name, status: 402, error: payment.error, ms: Date.now() - started });
+    return Response.json({ error: payment.error }, { status: 402 });
+  }
+
+  // A replay of a paid request (retry) gets the stored response; the tool (and any LLM) runs once per payment.
+  const cached = paidResults.get(payment.nonce);
+  if (cached) {
+    logEvent("tool", { tool: name, status: 200, txid: payment.txid, cached: true, ms: Date.now() - started });
+    return Response.json(cached);
+  }
 
   try {
     const result = await runTool(name, params);
+    paidResults.set(payment.nonce, { result, paidWith: payment.txid }, payment.expires);
+    logEvent("tool", { tool: name, status: 200, txid: payment.txid, ms: Date.now() - started });
     return Response.json({ result, paidWith: payment.txid });
   } catch (e) {
     const status = e instanceof ToolInputError ? 400 : 502;
-    return Response.json({ error: e instanceof Error ? e.message : "tool failed", paidWith: payment.txid }, { status });
+    const error = e instanceof Error ? e.message : "tool failed";
+    logEvent("tool", { tool: name, status, txid: payment.txid, error, ms: Date.now() - started });
+    return Response.json({ error, paidWith: payment.txid }, { status });
   }
 }
 

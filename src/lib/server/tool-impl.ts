@@ -43,13 +43,24 @@ function isPublicHttpsUrl(raw: string): URL {
   return url;
 }
 
+const MAX_REDIRECTS = 3;
+
 async function webReader(params: URLSearchParams) {
-  const url = isPublicHttpsUrl(params.get("url") ?? "");
-  const res = await fetch(url, {
-    redirect: "follow",
-    signal: AbortSignal.timeout(10000),
-    headers: { "user-agent": "SatchelReader/0.1 (+hackathon demo)", accept: "text/html,text/plain" },
-  });
+  let url = isPublicHttpsUrl(params.get("url") ?? "");
+  let res: Response;
+  // Follow redirects by hand so every hop passes the public-URL guard (no redirect into private networks).
+  for (let hop = 0; ; hop++) {
+    res = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(10000),
+      headers: { "user-agent": "SatchelReader/0.1 (+hackathon demo)", accept: "text/html,text/plain" },
+    });
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) break;
+    await res.body?.cancel(); // release the redirect response before the next hop
+    if (hop >= MAX_REDIRECTS) throw new ToolInputError("too many redirects");
+    url = isPublicHttpsUrl(new URL(location, url).toString());
+  }
   if (!res.ok) throw new Error(`page returned ${res.status}`);
   const html = (await res.text()).slice(0, 400_000);
   const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]?.trim() ?? null;

@@ -27,6 +27,10 @@ export async function POST(request: Request) {
       // Should be impossible; surface loudly if the covenant ever lets this through.
       return Response.json({ error: "UNEXPECTED: the attack transaction was accepted", txid: outcome.txid }, { status: 500 });
     }
+    if (!outcome.covenant) {
+      // Not a covenant verdict (busy vault, network error): don't present it as proof.
+      return Response.json({ error: `The test could not run: ${outcome.reason}` }, { status: 503 });
+    }
     return Response.json({ kind, rejected: true, reason: outcome.reason, rule: outcome.rule, nodeError: outcome.nodeError });
   } catch (e) {
     const status = e instanceof AgentAuthError ? 400 : 502;

@@ -43,6 +43,8 @@ is committed and imported by both the client and the server.
 - `src/lib/tools.ts`: the paid tool catalog (prices in sats).
 - `src/lib/config.ts`: network, explorer links, defaults, and banner links (from env).
 - `src/lib/descriptor.ts`: the client-held vault descriptor (params, agentIndex, token). Validated by zod on the server.
+- Pre-deploy hardening spec: `docs/superpowers/specs/2026-11-17-predeploy-hardening.md` (request-bound idempotent x402
+  payments, stale-UTXO retries, explicit `AGENT_MODE`, JSON logs `evt: payment|tool|agent_run`).
 - `src/lib/server/agent-wallet.ts`: `payFromVault` (serialized per vault, never pre-checks the budget, so the covenant
   is the enforcer). `paid-client.ts` handles the 402 → pay → retry flow. `agent-runner.ts` runs the AI SDK
   `ToolLoopAgent`, or a scripted plan when no LLM key is set.

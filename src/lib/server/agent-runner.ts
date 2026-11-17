@@ -87,7 +87,12 @@ function finish(facts: string[], emit: Emit, error?: string) {
   });
 }
 
-export async function runAgent(origin: string, opened: Opened, prompt: string, emit: Emit) {
+export async function runAgent(origin: string, opened: Opened, prompt: string, emitEvent: Emit) {
+  let paid = 0;
+  const emit: Emit = (e) => {
+    if (e.type === "paid") paid++;
+    emitEvent(e);
+  };
   const tools = makeTools(origin, opened, emit);
   if (!hasLlm()) return runScripted(prompt, tools, emit);
 
@@ -97,6 +102,19 @@ export async function runAgent(origin: string, opened: Opened, prompt: string, e
     tools,
     stopWhen: isStepCount(10),
   });
-  const result = await agent.generate({ prompt });
-  emit({ type: "final", text: result.text || "(no answer)" });
+  let text: string;
+  try {
+    text = (await agent.generate({ prompt })).text;
+  } catch (e) {
+    // Gateway down, no credits, rate limit…: keep the demo working with the scripted plan.
+    const why = e instanceof Error ? e.message.split("\n")[0].slice(0, 160) : "unknown error";
+    if (paid > 0) {
+      // Never pay twice for the same research: keep what was already bought.
+      emit({ type: "final", text: `The language model stopped (${why}). The paid results above are what I got before that.` });
+      return;
+    }
+    emit({ type: "status", text: `The language model is unavailable (${why}); falling back to the scripted research plan.` });
+    return runScripted(prompt, tools, emit);
+  }
+  emit({ type: "final", text: text || "(no answer)" });
 }

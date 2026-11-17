@@ -17,6 +17,7 @@ export interface ToolInfo {
 export interface AppConfig {
   network: "mainnet" | "chipnet";
   llm: boolean;
+  feePerCall: string; // estimated miner fee per paid call, sats (counts toward the cap)
   tools: ToolInfo[];
 }
 

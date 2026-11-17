@@ -122,10 +122,15 @@ export function isVaultUtxo(utxo: SpendableUtxo): boolean {
   return utxo.token?.nft?.capability === "mutable" && utxo.token.nft.commitment.length === 24 && utxo.token.amount === 0n;
 }
 
-export async function findVaultUtxo(contract: VaultContract): Promise<SpendableUtxo | undefined> {
+/**
+ * The vault's state UTXO. There should only be one; pick the largest if someone sent extra state NFTs.
+ * `skip` holds outpoints ("txid:vout") known to be spent already (e.g. while Electrum lags behind a broadcast).
+ */
+export async function findVaultUtxo(contract: VaultContract, skip: ReadonlySet<string> = new Set()): Promise<SpendableUtxo | undefined> {
   const utxos = await contract.getUtxos();
-  // There should only be one; pick the largest if someone sent extra state NFTs.
-  return utxos.filter(isVaultUtxo).sort((a, b) => Number(b.satoshis - a.satoshis))[0];
+  return utxos
+    .filter((u) => isVaultUtxo(u) && !skip.has(`${u.txid}:${u.vout}`))
+    .sort((a, b) => (b.satoshis > a.satoshis ? 1 : b.satoshis < a.satoshis ? -1 : 0))[0];
 }
 
 const FEE_RATE = 1n; // sats/byte

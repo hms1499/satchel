@@ -10,7 +10,7 @@ const PAY_TO = "bchtest:qzhw4v5cag3h98392ktmmaean9wysfmdvuc0drgy7h";
 describe("checkChallenge", () => {
   let challenge: ReturnType<typeof createChallenge>;
   beforeAll(() => {
-    challenge = createChallenge(RESOURCE, PAY_TO, 1_000n);
+    challenge = createChallenge(RESOURCE, PAY_TO, 1_000n, "aa".repeat(32));
   });
 
   it("accepts the challenge exactly as the 402 response serves it (with the extra `scheme` field)", () => {
@@ -29,6 +29,10 @@ describe("checkChallenge", () => {
 
   it("rejects a tampered payTo", () => {
     expect(checkChallenge({ ...challenge, payTo: "bchtest:qqattacker" }, RESOURCE)).toBe("invalid challenge signature");
+  });
+
+  it("rejects a tampered request binding", () => {
+    expect(checkChallenge({ ...challenge, request: "bb".repeat(32) }, RESOURCE)).toBe("invalid challenge signature");
   });
 
   it("rejects a challenge issued for another resource", () => {

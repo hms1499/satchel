@@ -8,7 +8,7 @@ export type AgentEvent =
   | { type: "thought"; text: string }
   | { type: "invoice"; tool: ToolName; amount: string; payTo: string }
   | { type: "paid"; tool: ToolName; txid: string; url: string; amount: string; fee: string; spentInPeriod: string; remaining: string; balance: string }
-  | { type: "rejected"; tool: ToolName | "attack"; reason: string; rule?: string; nodeError?: string; wouldSpend?: string }
+  | { type: "rejected"; tool: ToolName | "attack"; reason: string; covenant: boolean; rule?: string; nodeError?: string; wouldSpend?: string }
   | { type: "tool-result"; tool: ToolName; summary: string }
   | { type: "final"; text: string }
   | { type: "error"; text: string };
@@ -16,6 +16,32 @@ export type AgentEvent =
 export type Emit = (event: AgentEvent) => void;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const RETRY_DELAYS_MS = process.env.NODE_ENV === "test" ? [1, 1, 1, 1] : [800, 1600, 2400, 3200];
+
+/**
+ * Sends a paid request, retrying with the same payment header (idempotent: the payment is bound to this exact
+ * request) while the provider has not seen the payment yet, on 5xx responses and on network errors.
+ * Client errors (4xx other than "payment not found") are final.
+ */
+export async function retryPaidRequest(doFetch: () => Promise<Response>): Promise<{ ok: true; result: unknown } | { ok: false; error: string }> {
+  let lastError = "the tool provider did not answer";
+  for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt++) {
+    if (attempt > 0) await sleep(RETRY_DELAYS_MS[attempt - 1]);
+    let res: Response;
+    try {
+      res = await doFetch();
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : "network error";
+      continue;
+    }
+    const data = (await res.json().catch(() => ({}))) as { result?: unknown; error?: string };
+    if (res.ok) return { ok: true, result: data.result };
+    lastError = data.error ?? `HTTP ${res.status}`;
+    const notSeenYet = res.status === 402 && /not found/.test(lastError);
+    if (!notSeenYet && res.status < 500) return { ok: false, error: lastError };
+  }
+  return { ok: false, error: lastError };
+}
 
 /** Calls a paid tool: on HTTP 402 it pays from the vault (with the challenge nonce as memo) and retries. */
 export async function paidCall(
@@ -40,8 +66,10 @@ export async function paidCall(
 
   const payment = await payFromVault(opened, challenge.payTo, BigInt(challenge.amount), memoForChallenge(challenge));
   if (!payment.ok) {
-    emit({ type: "rejected", tool, reason: payment.reason, rule: payment.rule, nodeError: payment.nodeError, wouldSpend: payment.wouldSpend?.toString() });
-    return { ok: false, error: `Payment refused: ${payment.reason}. The vault's spending cap for this period is exhausted or the payee is not allowed.` };
+    emit({ type: "rejected", tool, reason: payment.reason, covenant: payment.covenant, rule: payment.rule, nodeError: payment.nodeError, wouldSpend: payment.wouldSpend?.toString() });
+    return payment.covenant
+      ? { ok: false, error: `Payment refused: ${payment.reason}. The vault's spending cap for this period is exhausted or the payee is not allowed.` }
+      : { ok: false, error: `Payment failed: ${payment.reason}` };
   }
   emit({
     type: "paid",
@@ -55,20 +83,9 @@ export async function paidCall(
     balance: payment.balance.toString(),
   });
 
-  // The server verifies the 0-conf tx via Electrum; allow a moment for propagation.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-payment": encodePaymentHeader(challenge, payment.txid) },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) return { ok: true, result: data.result };
-    if (res.status === 402 && /not found/.test(data.error ?? "") && attempt < 4) {
-      await sleep(800 * (attempt + 1));
-      continue;
-    }
-    return { ok: false, error: data.error ?? `HTTP ${res.status}` };
-  }
-  return { ok: false, error: "payment was not seen by the tool provider" };
+  // The provider verifies the 0-conf tx via Electrum (may lag a moment); the tool itself may fail transiently.
+  const header = encodePaymentHeader(challenge, payment.txid);
+  return retryPaidRequest(() =>
+    fetch(url, { method: "POST", headers: { "content-type": "application/json", "x-payment": header }, body: JSON.stringify(body) }),
+  );
 }

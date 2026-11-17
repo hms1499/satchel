@@ -14,12 +14,14 @@ const PERIODS = [
 
 export function CreateVault({
   tools,
+  feePerCall,
   walletBalance,
   busyStep,
   error,
   onCreate,
 }: {
   tools: ToolInfo[];
+  feePerCall: string;
   walletBalance: bigint | null;
   busyStep: string | null;
   error: string | null;
@@ -94,7 +96,10 @@ export function CreateVault({
                 <span className="font-mono text-sm font-semibold">{t.name}</span>
                 <span className="text-[13px] text-muted">{t.description}</span>
               </span>
-              <span className="whitespace-nowrap font-mono text-[13px] text-body">{fmtSats(t.price)} sats / call</span>
+              <span className="flex flex-col items-end whitespace-nowrap font-mono text-[13px] text-body">
+                <span>{fmtSats(t.price)} sats / call</span>
+                <span className="text-xs text-muted">+ ~{fmtSats(feePerCall)} network fee</span>
+              </span>
             </label>
           ))}
         </fieldset>
@@ -119,6 +124,10 @@ export function CreateVault({
           <span>
             Your agent can spend at most {fmtSats(cap || "0")} sats per {noun} (fees included), and only to{" "}
             {allowed.length ? allowed.map((t) => t.name).join(", ") : "nobody yet"}.
+          </span>
+          <span>
+            Each paid call also pays a Bitcoin Cash network fee of about {fmtSats(feePerCall)} sats, which counts toward
+            the cap.
           </span>
           <span>You can withdraw everything at any time. Only your wallet can do that.</span>
         </div>

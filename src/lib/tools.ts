@@ -20,6 +20,12 @@ export const PAID_TOOLS = {
   },
 } as const;
 
+/**
+ * Miner fee of one agent payment, shown to users because it counts toward the cap. Measured: a payment from the
+ * covenant is ~689 bytes at 1 sat/byte (redeem script 310 B, 3-payee allowlist 96 B, outputs 156 B).
+ */
+export const EST_FEE_PER_CALL = 700n;
+
 export type ToolName = keyof typeof PAID_TOOLS;
 export const TOOL_NAMES = Object.keys(PAID_TOOLS) as ToolName[];
 export const PROVIDER_COUNT = 3;
