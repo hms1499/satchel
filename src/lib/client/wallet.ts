@@ -6,7 +6,8 @@ import type { DappConnectionManager } from "@wizardconnect/dapp";
 import { NETWORK } from "../config";
 import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, lockingBytecodeOf, type VaultParams } from "../vault";
 import { paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
-import { broadcast, getBlockHeight, getUtxosFor, httpProvider } from "./chain";
+import { encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
+import { broadcast, getBlockHeight, getHistory, getTransactions, getUtxosFor, httpProvider } from "./chain";
 
 const PREFIX = NETWORK === "mainnet" ? "bitcoincash" : "bchtest";
 const PATHS = [
@@ -101,7 +102,16 @@ export interface CreateVaultInput {
   allowlist: string[];
 }
 
-export async function createVault(manager: DappConnectionManager, input: CreateVaultInput, onStep: (text: string) => void): Promise<VaultDescriptor> {
+/**
+ * `knownPayees` is the server's payee catalog (tool payTo addresses, in catalog order). The genesis tx
+ * stores the allowlist as indexes into it, so the vault can be recovered from chain (see recovery.ts).
+ */
+export async function createVault(
+  manager: DappConnectionManager,
+  input: CreateVaultInput,
+  knownPayees: string[],
+  onStep: (text: string) => void,
+): Promise<VaultDescriptor> {
   onStep("Registering a fresh agent key…");
   const reg = await fetch("/api/agent/register", { method: "POST" });
   if (!reg.ok) throw new Error("Could not register an agent");
@@ -140,6 +150,7 @@ export async function createVault(manager: DappConnectionManager, input: CreateV
     deposit: input.deposit,
     startHeight,
     changeAddress: change.address,
+    opReturn: encodeRecoveryMemo(params, agent.agentIndex, knownPayees),
   });
 
   onStep("Approve the vault creation in your wallet…");
@@ -172,4 +183,33 @@ export async function withdrawVault(manager: DappConnectionManager, params: Vaul
   const amount = builder.outputs[0].amount;
   const txid = await signAndBroadcast(manager, builder, [[0, "receive", 0]], `Satchel: withdraw ${amount.toLocaleString()} sats to your wallet`);
   return { txid, amount };
+}
+
+/**
+ * Finds vaults this wallet owns that are still open, using only the blockchain: the genesis memo of
+ * every recent transaction of the wallet's addresses. Used when the browser lost the vault descriptor.
+ */
+export async function findOwnedVaults(manager: DappConnectionManager, knownPayees: string[]): Promise<{ descriptor: VaultDescriptor; balance: bigint }[]> {
+  const owner = ownerAccount(manager);
+  const txids = await getHistory(walletAccounts(manager).map((a) => a.address));
+  const txs = await getTransactions(txids.slice(0, 60));
+  const found = findVaultsInTransactions(txs, owner.pubHex, knownPayees, httpProvider);
+  const open: { descriptor: VaultDescriptor; balance: bigint }[] = [];
+  for (const v of found) {
+    const utxo = await findVaultUtxo(getVaultContract(v.params, httpProvider));
+    if (!utxo) continue; // already withdrawn
+    open.push({
+      balance: utxo.satoshis,
+      descriptor: {
+        version: 1,
+        network: NETWORK,
+        agentIndex: v.agentIndex,
+        token: "",
+        params: paramsToDescriptorParams(v.params),
+        genesisTxid: v.genesisTxid,
+        recovered: true,
+      },
+    });
+  }
+  return open;
 }

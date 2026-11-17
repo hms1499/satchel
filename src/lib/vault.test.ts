@@ -97,6 +97,17 @@ describe("Satchel covenant", () => {
     await expect(spend({ to: attacker.address, overrideRecipientIndex: 0 }).builder.send()).rejects.toThrow(/lockingBytecode\) == entry/);
   });
 
+  it("blames the allowlist, not the cap, for a non-allowlisted payment when the budget is also used up", async () => {
+    // The payee rule is checked before the budget rule, so the demo always shows why an attacker payment fails.
+    await spend({ amount: 4_000n }).builder.send();
+    ctx.vaultUtxo = (await findVaultUtxo(ctx.contract))!;
+    await spend({ amount: 4_000n }).builder.send();
+    ctx.vaultUtxo = (await findVaultUtxo(ctx.contract))!;
+    await expect(spend({ to: attacker.address, amount: 2_000n, overrideRecipientIndex: 0 }).builder.send()).rejects.toThrow(
+      /lockingBytecode\) == entry/,
+    );
+  });
+
   it("rejects an agent that lies about the spent counter", async () => {
     await expect(spend({ overrideNextState: { periodStart: START, spent: 0n } }).builder.send()).rejects.toThrow(/nftCommitment ==/);
   });

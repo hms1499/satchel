@@ -214,8 +214,10 @@ export function buildGenesis(opts: {
   deposit: bigint;
   startHeight: number;
   changeAddress: string;
+  /** OP_RETURN chunks (see recovery.ts) so the owner can rebuild the vault from chain alone. */
+  opReturn?: string[];
 }) {
-  const { contract, inputs, deposit, startHeight, changeAddress } = opts;
+  const { contract, inputs, deposit, startHeight, changeAddress, opReturn } = opts;
   if (inputs.length === 0 || inputs[0].utxo.vout !== 0) throw new Error("Genesis input must have vout 0");
   if (inputs.some((i) => i.utxo.token)) throw new Error("Genesis inputs must not hold tokens");
   const total = inputs.reduce((s, i) => s + i.utxo.satoshis, 0n);
@@ -229,6 +231,7 @@ export function buildGenesis(opts: {
       amount: deposit,
       token: { category, amount: 0n, nft: { capability: "mutable", commitment: encodeState({ periodStart: startHeight, spent: 0n }) } },
     });
+    if (opReturn) builder.addOpReturnOutput(opReturn);
     const change = total - deposit - fee;
     if (change >= MIN_PAYMENT) builder.addOutput({ to: changeAddress, amount: change });
     return builder;

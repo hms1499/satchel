@@ -16,13 +16,20 @@ import { getProvider } from "./electrum";
 
 export class AgentAuthError extends Error {}
 
-/** Validates a client-supplied descriptor and checks it really belongs to one of our agents. */
-export function openDescriptor(raw: unknown) {
+/**
+ * Validates a client-supplied descriptor and checks it really belongs to one of our agents.
+ * `requireToken: false` is for read-only use (status), which needs no proof of ownership: it is public chain data.
+ */
+export function openDescriptor(raw: unknown, { requireToken = true }: { requireToken?: boolean } = {}) {
   const parsed = DescriptorSchema.safeParse(raw);
   if (!parsed.success) throw new AgentAuthError("Invalid vault descriptor");
   const d: VaultDescriptor = parsed.data;
   if (d.network !== NETWORK) throw new AgentAuthError(`Descriptor is for ${d.network}, server runs ${NETWORK}`);
-  if (!verifyAccess(d.agentIndex, d.token)) throw new AgentAuthError("Invalid agent access token");
+  if (requireToken && !verifyAccess(d.agentIndex, d.token)) {
+    throw new AgentAuthError(
+      d.token ? "Invalid agent access token" : "This vault was recovered from the blockchain, so the agent can't use it. Withdraw and create a new vault.",
+    );
+  }
   const key = agentKey(d.agentIndex);
   if (key.pubHex !== d.params.agentPk) throw new AgentAuthError("Descriptor agent key mismatch");
   const params = descriptorParams(d);

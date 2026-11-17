@@ -7,6 +7,7 @@
  *   npx tsx scripts/e2e.mts sweep            # move what the agent paid to the provider addresses back to the owner
  *   npx tsx scripts/e2e.mts refund <address> # send everything the test owner holds to <address>
  *
+ *   npx tsx scripts/e2e.mts recover          # list open vaults of the owner found on chain alone (genesis memo)
  *   npx tsx scripts/e2e.mts withdraw <file>  # owner-withdraw a vault saved in .e2e-vaults/ (recovery after a crash)
  *
  * E2E_DEPOSIT / E2E_CAP (sats) override the defaults of 20000 / 8000.
@@ -16,9 +17,10 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes, createHash } from "node:crypto";
 import { ElectrumNetworkProvider, SignatureTemplate, TransactionBuilder, type SpendableUtxo } from "cashscript";
-import { binToHex, publicKeyToP2pkhCashAddress } from "@bitauth/libauth";
-import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, type VaultParams } from "../src/lib/vault";
+import { binToHex, publicKeyToP2pkhCashAddress, sha256 } from "@bitauth/libauth";
+import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, lockingBytecodeOf, type VaultParams } from "../src/lib/vault";
 import { descriptorParams, paramsToDescriptorParams, type VaultDescriptor } from "../src/lib/descriptor";
+import { encodeRecoveryMemo, findVaultsInTransactions } from "../src/lib/recovery";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
@@ -73,6 +75,24 @@ async function sweepTo(utxos: SpendableUtxo[], signer: SignatureTemplate, to: st
   return { txid: (await build(fee).send()).txid, amount: total - fee };
 }
 
+/** Open vaults of the test owner rebuilt from chain data only (no descriptor). */
+async function recoverFromChain(knownPayees: string[]) {
+  const scriptHash = binToHex(sha256.hash(lockingBytecodeOf(owner.address)).reverse());
+  const history = (await provider.performRequest("blockchain.scripthash.get_history", scriptHash)) as { tx_hash: string }[];
+  const txs = await Promise.all(history.slice(-60).map(async (h) => ({ txid: h.tx_hash, hex: await provider.getRawTransaction(h.tx_hash) })));
+  const open = [];
+  for (const v of findVaultsInTransactions(txs, owner.pubHex, knownPayees, provider)) {
+    const utxo = await findVaultUtxo(getVaultContract(v.params, provider));
+    if (utxo) open.push({ ...v, balance: utxo.satoshis });
+  }
+  return open;
+}
+
+async function knownPayees(): Promise<string[]> {
+  const config = await (await fetch(`${BASE}/api/config`)).json();
+  return config.tools.map((t: { payTo: string }) => t.payTo);
+}
+
 async function ensureVoutZeroUtxo() {
   let utxos = (await provider.getUtxos(owner.address)).filter((u) => !u.token);
   const total = utxos.reduce((s, u) => s + u.satoshis, 0n);
@@ -111,6 +131,7 @@ async function run() {
     deposit: DEPOSIT,
     startHeight,
     changeAddress: owner.address,
+    opReturn: encodeRecoveryMemo(params, agent.agentIndex, params.allowlist),
   });
   // Save the descriptor before broadcasting: withdrawing needs the params (agentPk), which the chain doesn't reveal.
   const descriptor: VaultDescriptor = {
@@ -131,6 +152,17 @@ async function run() {
 
   await new Promise((r) => setTimeout(r, 1500));
   log("status:", await post("/api/vault/status", { descriptor }));
+
+  log("\n--- recovery from chain alone (pretend the descriptor was lost) ---");
+  const recovered = (await recoverFromChain(params.allowlist)).find((v) => v.genesisTxid === genesis.txid);
+  if (!recovered) throw new Error("RECOVERY FAILED: the new vault was not found from chain data");
+  const same = getVaultContract(recovered.params, provider).address === contract.address && recovered.agentIndex === agent.agentIndex;
+  log(same ? "recovered: same contract address and agent index" : "RECOVERY MISMATCH", "| balance", recovered.balance.toString());
+  if (!same) throw new Error("recovered params do not rebuild the vault");
+  const tokenless = { ...descriptor, token: "", recovered: true };
+  log("status without token:", (await post("/api/vault/status", { descriptor: tokenless })).balance, "sats");
+  const blocked = await fetch(`${BASE}/api/agent/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ descriptor: tokenless, prompt: "hi" }) });
+  log("agent with a recovered (tokenless) descriptor:", blocked.status, (await blocked.text()).slice(0, 160));
 
   log("\n--- agent run ---");
   const res = await fetch(`${BASE}/api/agent/run`, {
@@ -182,6 +214,10 @@ async function main() {
     log("balance:", utxos.reduce((s, u) => s + u.satoshis, 0n).toString(), "sats in", utxos.length, "utxos");
   } else if (cmd === "run") {
     await run();
+  } else if (cmd === "recover") {
+    const vaults = await recoverFromChain(await knownPayees());
+    if (vaults.length === 0) log("no open vaults found on chain for", owner.address);
+    for (const v of vaults) log(v.genesisTxid, "agentIndex", v.agentIndex, "balance", v.balance.toString(), "cap", v.params.capPerPeriod.toString());
   } else if (cmd === "withdraw") {
     const file = process.argv[3];
     if (!file) throw new Error("Usage: withdraw .e2e-vaults/<file>.json");

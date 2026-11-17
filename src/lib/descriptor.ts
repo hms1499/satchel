@@ -10,7 +10,8 @@ export const DescriptorSchema = z.object({
   version: z.literal(1),
   network: z.enum(["mainnet", "chipnet"]),
   agentIndex: z.number().int().nonnegative(),
-  token: z.string().regex(/^[0-9a-f]{64}$/),
+  // Empty for a vault recovered from chain: the access token is never published, so the agent can't be driven.
+  token: z.string().regex(/^([0-9a-f]{64})?$/),
   params: z.object({
     ownerPk: z.string().regex(/^0[23][0-9a-f]{64}$/),
     agentPk: z.string().regex(/^0[23][0-9a-f]{64}$/),
@@ -20,6 +21,7 @@ export const DescriptorSchema = z.object({
   }),
   createdAt: z.number().optional(),
   genesisTxid: z.string().optional(),
+  recovered: z.boolean().optional(),
 });
 
 export type VaultDescriptor = z.infer<typeof DescriptorSchema>;

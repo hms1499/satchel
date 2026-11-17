@@ -32,6 +32,15 @@ contract Satchel(
         int periodStart = int(commitment.split(4)[0]);
         int spent = int(commitment.split(4)[1]);
 
+        // Output 1: payment to an allowlisted recipient, without tokens. Checked before the budget so that
+        // a payment to a stranger is always reported as a payee violation, even when the budget is also exhausted.
+        require(hash256(allowlist) == allowlistHash);
+        require(recipientIndex >= 0);
+        require((recipientIndex + 1) * 32 <= allowlist.length);
+        bytes entry = allowlist.split(recipientIndex * 32)[1].split(32)[0];
+        require(sha256(tx.outputs[1].lockingBytecode) == entry);
+        require(tx.outputs[1].tokenCategory == 0x);
+
         // Everything that leaves the vault (payment + fee) counts against the budget.
         int outflow = tx.inputs[0].value - tx.outputs[0].value;
         require(outflow > 0);
@@ -53,14 +62,6 @@ contract Satchel(
         require(tx.outputs[0].tokenCategory == category);
         require(tx.outputs[0].tokenAmount == 0);
         require(tx.outputs[0].nftCommitment == toPaddedBytes(newStart, 4) + toPaddedBytes(newSpent, 8));
-
-        // Output 1: payment to an allowlisted recipient, without tokens.
-        require(hash256(allowlist) == allowlistHash);
-        require(recipientIndex >= 0);
-        require((recipientIndex + 1) * 32 <= allowlist.length);
-        bytes entry = allowlist.split(recipientIndex * 32)[1].split(32)[0];
-        require(sha256(tx.outputs[1].lockingBytecode) == entry);
-        require(tx.outputs[1].tokenCategory == 0x);
 
         // Optional output 2: a zero-value OP_RETURN memo (used for pay-per-call nonces).
         if (tx.outputs.length == 3) {

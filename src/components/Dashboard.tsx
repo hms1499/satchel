@@ -124,6 +124,8 @@ export function Dashboard({
   const pct = cap > 0n ? Math.min(100, Number((spent * 100n) / cap)) : 0;
   const blocksLeft = status ? Math.max(0, status.resetsAtHeight - status.tipHeight) : null;
   const periodNoun = descriptor.params.periodBlocks === "6" ? "hour" : descriptor.params.periodBlocks === "1008" ? "week" : descriptor.params.periodBlocks === "144" ? "day" : "period";
+  // A vault recovered from chain has no agent access token (it is never published), so only the owner actions work.
+  const agentLocked = !descriptor.token;
   const allowedNames = tools.filter((t) => descriptor.params.allowlist.includes(t.payTo)).map((t) => t.name);
 
   return (
@@ -184,6 +186,7 @@ export function Dashboard({
           </Button>
         </Card>
 
+        {!agentLocked && (
         <Card className="flex flex-col gap-3.5">
           <div className="flex flex-col gap-1">
             <CardTitle>Try to break it</CardTitle>
@@ -214,9 +217,20 @@ export function Dashboard({
             </div>
           )}
         </Card>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
+        {agentLocked ? (
+          <Card className="flex flex-col gap-3">
+            <CardTitle>Recovered from the blockchain</CardTitle>
+            <p className="text-sm text-body">
+              This browser had lost the vault, so Satchel rebuilt it from your wallet&apos;s on-chain history. Your funds are
+              safe and you can withdraw them now. The agent&apos;s access key is never written on-chain, so the agent can&apos;t
+              use this vault any more: withdraw, then create a new vault to keep going.
+            </p>
+          </Card>
+        ) : (
         <Card className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle>Research agent</CardTitle>
@@ -254,6 +268,7 @@ export function Dashboard({
             ))}
           </div>
         </Card>
+        )}
 
         <Card className="flex flex-col gap-3">
           <CardTitle>On-chain activity</CardTitle>

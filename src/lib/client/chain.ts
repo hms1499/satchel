@@ -34,6 +34,8 @@ export async function getUtxosFor(addresses: string[]): Promise<Record<string, S
   return out;
 }
 
+export const getHistory = async (addresses: string[]) => (await chain<{ txids: string[] }>({ op: "history", addresses })).txids;
+export const getTransactions = async (txids: string[]) => (await chain<{ txs: { txid: string; hex: string }[] }>({ op: "txs", txids })).txs;
 export const getBlockHeight = async () => (await chain<{ height: number }>({ op: "height" })).height;
 export const broadcast = async (hex: string) => (await chain<{ txid: string }>({ op: "broadcast", hex })).txid;
 

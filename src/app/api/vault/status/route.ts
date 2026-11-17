@@ -3,7 +3,7 @@ import { AgentAuthError, openDescriptor, vaultStatus } from "@/lib/server/agent-
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const opened = openDescriptor(body.descriptor);
+    const opened = openDescriptor(body.descriptor, { requireToken: false });
     return Response.json(await vaultStatus(opened));
   } catch (e) {
     const status = e instanceof AgentAuthError ? 400 : 502;

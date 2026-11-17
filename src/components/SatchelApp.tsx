@@ -5,7 +5,7 @@ import { useWizardConnect, WizardConnectQRDialog } from "@wizardconnect/react";
 import { NETWORK, txUrl } from "@/lib/config";
 import { descriptorParams, type VaultDescriptor } from "@/lib/descriptor";
 import { fetchConfig, fmtSats, loadDescriptor, saveDescriptor, shortAddress, shortHash, type AppConfig } from "@/lib/client/agent";
-import { createVault, ownerAccount, sumSats, walletFunds, withdrawVault, type CreateVaultInput } from "@/lib/client/wallet";
+import { createVault, findOwnedVaults, ownerAccount, sumSats, walletFunds, withdrawVault, type CreateVaultInput } from "@/lib/client/wallet";
 import { Banner } from "./Banner";
 import { CreateVault } from "./CreateVault";
 import { Dashboard } from "./Dashboard";
@@ -25,6 +25,7 @@ export function SatchelApp() {
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [closed, setClosed] = useState<{ txid: string; amount: bigint } | null>(null);
+  const [owned, setOwned] = useState<{ descriptor: VaultDescriptor; balance: bigint }[]>([]);
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => setConfig(null));
@@ -49,6 +50,27 @@ export function SatchelApp() {
     };
   }, [connected, wc.manager]);
 
+  // No vault in this browser: look for open vaults this wallet owns on chain (genesis recovery memo).
+  const knownPayees = config?.tools.map((t) => t.payTo);
+  const payeesKey = knownPayees?.join(",");
+  useEffect(() => {
+    if (!connected || !wc.manager || !payeesKey || descriptor) return;
+    let cancelled = false;
+    findOwnedVaults(wc.manager, payeesKey.split(","))
+      .then((list) => !cancelled && setOwned(list))
+      .catch(() => !cancelled && setOwned([]));
+    return () => {
+      cancelled = true;
+    };
+  }, [connected, wc.manager, payeesKey, descriptor]);
+
+  const openOwned = (d: VaultDescriptor) => {
+    saveDescriptor(d);
+    setDescriptor(d);
+    setOwned([]);
+    setClosed(null);
+  };
+
   const owner = connected && wc.manager ? safeOwner(wc.manager) : null;
 
   const launch = () => {
@@ -61,7 +83,7 @@ export function SatchelApp() {
     setCreateError(null);
     setBusyStep("Starting…");
     try {
-      const d = await createVault(wc.manager, input, setBusyStep);
+      const d = await createVault(wc.manager, input, knownPayees ?? [], setBusyStep);
       saveDescriptor(d);
       setDescriptor(d);
       setClosed(null);
@@ -159,6 +181,32 @@ export function SatchelApp() {
               <Button className="min-h-12 self-start text-base" onClick={() => wc.connect()}>
                 Connect with WizardConnect
               </Button>
+            </Card>
+          </section>
+        )}
+
+        {view === "app" && !descriptor && connected && owned.length > 0 && (
+          <section className="flex justify-center pt-6">
+            <Card className="flex w-full max-w-[560px] flex-col gap-3 p-6">
+              <span className="text-[13px] font-semibold text-brand">Found on the blockchain</span>
+              <p className="text-body">
+                Your wallet owns {owned.length === 1 ? "an open vault" : `${owned.length} open vaults`} that this browser doesn&apos;t
+                remember. You can open {owned.length === 1 ? "it" : "them"} to check the balance and withdraw.
+              </p>
+              {owned.map(({ descriptor: d, balance }) => (
+                <div key={d.genesisTxid} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3.5">
+                  <span className="text-sm">
+                    <span className="font-semibold">{fmtSats(balance)} sats</span>
+                    <span className="text-muted"> · cap {fmtSats(d.params.capPerPeriod)} sats · created in </span>
+                    <a className="font-mono text-brand underline" href={txUrl(d.genesisTxid!)} target="_blank" rel="noreferrer">
+                      {shortHash(d.genesisTxid!)}
+                    </a>
+                  </span>
+                  <Button variant="secondary" onClick={() => openOwned(d)}>
+                    Open vault
+                  </Button>
+                </div>
+              ))}
             </Card>
           </section>
         )}
