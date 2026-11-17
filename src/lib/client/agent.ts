@@ -1,10 +1,11 @@
 "use client";
 
 import type { VaultDescriptor } from "../descriptor";
+import type { SellerInfo } from "../allowlist";
 import type { AgentEvent } from "../server/paid-client";
 import type { VaultStatus } from "../server/agent-wallet";
 
-export type { AgentEvent, VaultStatus };
+export type { AgentEvent, SellerInfo, VaultStatus };
 
 export interface ToolInfo {
   name: string;
@@ -19,6 +20,7 @@ export interface AppConfig {
   llm: boolean;
   feePerCall: string; // estimated miner fee per paid call, sats (counts toward the cap)
   tools: ToolInfo[];
+  sellers: SellerInfo[]; // suggested third-party sellers (SATCHEL_SELLERS)
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {

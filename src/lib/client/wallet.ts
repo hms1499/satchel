@@ -102,6 +102,8 @@ export interface CreateVaultInput {
   capPerPeriod: bigint;
   periodBlocks: bigint;
   allowlist: string[];
+  labels: Record<string, string>; // display names for seller and custom payees, keyed by canonical address
+  sellers: string[]; // origins of the chosen sellers
 }
 
 /**
@@ -127,12 +129,13 @@ export async function createVault(
   }
 
   const owner = ownerAccount(manager);
-  const params: VaultParams = { ownerPk: owner.pubHex, agentPk: agent.agentPk, ...input };
+  const { deposit, capPerPeriod, periodBlocks, allowlist, labels, sellers } = input;
+  const params: VaultParams = { ownerPk: owner.pubHex, agentPk: agent.agentPk, capPerPeriod, periodBlocks, allowlist };
   const contract = getVaultContract(params, httpProvider);
 
   onStep("Looking for coins in your wallet…");
   let funds = await walletFunds(manager);
-  const needed = input.deposit + 3_000n;
+  const needed = deposit + 3_000n;
   if (sumSats(funds) < needed) {
     throw new Error(`Not enough BCH in the connected wallet: need about ${needed.toLocaleString()} sats, found ${sumSats(funds).toLocaleString()}.`);
   }
@@ -156,7 +159,7 @@ export async function createVault(
   const { builder } = buildGenesis({
     contract,
     inputs: chosen.map((f) => ({ utxo: f.utxo, unlocker: placeholderP2PKHUnlocker(f.account.address) })),
-    deposit: input.deposit,
+    deposit,
     startHeight,
     changeAddress: change.address,
     opReturn: encodeRecoveryMemo(params, agent.agentIndex, knownPayees),
@@ -167,7 +170,7 @@ export async function createVault(
     manager,
     builder,
     chosen.map((f, i) => [i, f.account.pathName, f.account.index]),
-    `Satchel: create an agent vault with ${input.deposit.toLocaleString()} sats`,
+    `Satchel: create an agent vault with ${deposit.toLocaleString()} sats`,
   );
 
   return {
@@ -178,6 +181,8 @@ export async function createVault(
     params: paramsToDescriptorParams(params),
     createdAt: Date.now(),
     genesisTxid: txid,
+    labels,
+    sellers,
     ...(externalAgentPk && { external: true }),
   };
 }

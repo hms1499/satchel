@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { DEFAULTS } from "@/lib/config";
-import { fmtSats, type ToolInfo } from "@/lib/client/agent";
+import { DEFAULTS, NETWORK } from "@/lib/config";
+import { buildAllowlist } from "@/lib/allowlist";
+import { fmtSats, type SellerInfo, type ToolInfo } from "@/lib/client/agent";
 import type { CreateVaultInput } from "@/lib/client/wallet";
+import { CustomPayees, type PayeeRow } from "./CustomPayees";
 import { Button, Card, Spinner } from "./ui";
 
 const PERIODS = [
@@ -14,6 +16,7 @@ const PERIODS = [
 
 export function CreateVault({
   tools,
+  sellers,
   feePerCall,
   walletBalance,
   externalAgentPk,
@@ -22,6 +25,7 @@ export function CreateVault({
   onCreate,
 }: {
   tools: ToolInfo[];
+  sellers: SellerInfo[];
   feePerCall: string;
   walletBalance: bigint | null;
   externalAgentPk: string | null;
@@ -33,21 +37,43 @@ export function CreateVault({
   const [cap, setCap] = useState(DEFAULTS.capPerPeriod.toString());
   const [period, setPeriod] = useState(DEFAULTS.periodBlocks.toString());
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [pickedSellers, setPickedSellers] = useState<Record<number, boolean>>({}); // off by default
+  const [customRows, setCustomRows] = useState<PayeeRow[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
 
   const isOn = (name: string) => selected[name] ?? true;
   const allowed = tools.filter((t) => isOn(t.name));
+  const chosenSellers = sellers.filter((_, i) => pickedSellers[i]);
+  const payeeNames = [
+    ...allowed.map((t) => t.name),
+    ...chosenSellers.map((s) => s.name),
+    ...customRows.filter((r) => r.address.trim()).map((r) => r.label.trim() || "a custom payee"),
+  ];
   const noun = PERIODS.find((p) => p.value === period)?.noun ?? "period";
   const busy = busyStep !== null;
 
   const submit = () => {
     const d = BigInt(deposit || "0");
     const c = BigInt(cap || "0");
-    if (allowed.length === 0) return setFormError("Pick at least one API the agent may pay.");
+    const built = buildAllowlist({
+      tools: allowed.map((t) => t.payTo),
+      sellers: chosenSellers,
+      custom: customRows,
+      network: NETWORK,
+      knownPayees: tools.map((t) => t.payTo),
+    });
+    if (!built.ok) return setFormError(built.error);
     if (d < 5_000n) return setFormError("Deposit at least 5,000 sats.");
     if (c < 2_000n) return setFormError("Set a cap of at least 2,000 sats.");
     setFormError(null);
-    onCreate({ deposit: d, capPerPeriod: c, periodBlocks: BigInt(period), allowlist: allowed.map((t) => t.payTo) });
+    onCreate({
+      deposit: d,
+      capPerPeriod: c,
+      periodBlocks: BigInt(period),
+      allowlist: built.allowlist,
+      labels: built.labels,
+      sellers: built.sellers,
+    });
   };
 
   const field = "min-h-11 rounded-[10px] border border-line-strong bg-surface p-3 font-mono text-[15px] font-normal";
@@ -114,6 +140,29 @@ export function CreateVault({
             </label>
           ))}
         </fieldset>
+        {sellers.length > 0 && (
+          <fieldset className="flex flex-col gap-2.5">
+            <legend className="mb-1 text-sm font-semibold">Suggested sellers</legend>
+            <p className="text-[13px] text-muted">Other APIs that accept payment from a Satchel vault. Tick one to let your agent pay it.</p>
+            {sellers.map((s, i) => (
+              <label key={`${s.origin}-${s.payTo}`} className="flex min-h-11 cursor-pointer items-center gap-3.5 rounded-xl border border-line px-3.5 py-3">
+                <input
+                  type="checkbox"
+                  className="size-5 accent-brand"
+                  checked={pickedSellers[i] ?? false}
+                  onChange={() => setPickedSellers((p) => ({ ...p, [i]: !p[i] }))}
+                />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-sm font-semibold">{s.name}</span>
+                  {s.description && <span className="text-[13px] text-muted">{s.description}</span>}
+                  <span className="break-all font-mono text-xs text-muted">{s.origin}</span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+        )}
+        <CustomPayees rows={customRows} onChange={setCustomRows} field={field} />
+        <p className="text-[13px] text-muted">At most 8 payees in total.</p>
         {(formError || error) && (
           <div role="alert" className="rounded-[10px] bg-warn-soft px-3.5 py-2.5 text-sm text-warn-ink">
             {formError || error}
@@ -134,7 +183,7 @@ export function CreateVault({
           <span className="font-display text-[19px] font-semibold text-ink">What the covenant will enforce</span>
           <span>
             Your agent can spend at most {fmtSats(cap || "0")} sats per {noun} (fees included), and only to{" "}
-            {allowed.length ? allowed.map((t) => t.name).join(", ") : "nobody yet"}.
+            {payeeNames.length ? payeeNames.join(", ") : "nobody yet"}.
           </span>
           <span>
             Each paid call also pays a Bitcoin Cash network fee of about {fmtSats(feePerCall)} sats, which counts toward

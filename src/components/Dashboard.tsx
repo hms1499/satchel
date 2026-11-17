@@ -127,7 +127,11 @@ export function Dashboard({
   const periodNoun = descriptor.params.periodBlocks === "6" ? "hour" : descriptor.params.periodBlocks === "1008" ? "week" : descriptor.params.periodBlocks === "144" ? "day" : "period";
   // A vault recovered from chain has no agent access token (it is never published), so only the owner actions work.
   const agentLocked = !descriptor.token;
-  const allowedNames = tools.filter((t) => descriptor.params.allowlist.includes(t.payTo)).map((t) => t.name);
+  // Tool payees show the tool name; sellers and custom payees their label; a vault recovered from chain has no labels.
+  const payees = descriptor.params.allowlist.map((address) => ({
+    address,
+    name: tools.find((t) => t.payTo === address)?.name ?? descriptor.labels?.[address] ?? `Custom payee ${shortAddress(address)}`,
+  }));
 
   return (
     <section className="flex flex-wrap items-start gap-6 py-6">
@@ -163,9 +167,9 @@ export function Dashboard({
           <div className="flex flex-col gap-2">
             <span className="text-[13px] font-semibold">Allowlisted payees</span>
             <div className="flex flex-wrap gap-1.5">
-              {allowedNames.map((n) => (
-                <span key={n} className="rounded-full border border-line bg-tint px-2.5 py-1 font-mono text-xs">
-                  {n}
+              {payees.map((p) => (
+                <span key={p.address} title={p.address} className="rounded-full border border-line bg-tint px-2.5 py-1 font-mono text-xs">
+                  {p.name}
                 </span>
               ))}
             </div>
@@ -313,7 +317,14 @@ export function Dashboard({
 
 /** For a vault whose agent is the user's own (satchel-pay-mcp): the code the agent needs to use this vault. */
 function ConnectAgentCard({ descriptor }: { descriptor: VaultDescriptor }) {
-  const code = encodeConnectCode({ v: 1, network: descriptor.network, params: descriptor.params, genesisTxid: descriptor.genesisTxid });
+  const code = encodeConnectCode({
+    v: 1,
+    network: descriptor.network,
+    params: descriptor.params,
+    genesisTxid: descriptor.genesisTxid,
+    labels: descriptor.labels,
+    sellers: descriptor.sellers,
+  });
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {

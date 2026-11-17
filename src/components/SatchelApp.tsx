@@ -271,6 +271,7 @@ export function SatchelApp() {
         {view === "app" && !closed && !descriptor && connected && config && (
           <CreateVault
             tools={config.tools}
+            sellers={config.sellers}
             feePerCall={config.feePerCall}
             walletBalance={walletBalance}
             externalAgentPk={externalAgentPk}
