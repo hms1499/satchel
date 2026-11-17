@@ -65,6 +65,6 @@ describe("external-agent vaults", () => {
     const params = { ownerPk: owner.pubHex, agentPk: externalAgent.pubHex, capPerPeriod: 8_000n, periodBlocks: 144n, allowlist: [PAY_TO] };
     const [prefix, payload] = encodeRecoveryMemo(params, EXTERNAL_AGENT_INDEX, [PAY_TO]);
     const script = flattenBinArray([Uint8Array.of(0x6a), encodeDataPush(utf8ToBin(prefix)), encodeDataPush(hexToBin(payload.slice(2)))]);
-    expect(decodeRecoveryMemo(script, owner.pubHex, [PAY_TO])?.agentIndex).toBe(0xffffffff);
+    expect(decodeRecoveryMemo(script, owner.pubHex, [PAY_TO], "chipnet")?.agentIndex).toBe(0xffffffff);
   });
 });

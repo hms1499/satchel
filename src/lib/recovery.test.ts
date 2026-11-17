@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { MockNetworkProvider, SignatureTemplate, randomUtxo } from "cashscript";
-import { binToHex, encodeCashAddress, hash160, secp256k1 } from "@bitauth/libauth";
+import { binToHex, encodeCashAddress, flattenBinArray, hash160, hexToBin, secp256k1, utf8ToBin } from "@bitauth/libauth";
 import { buildGenesis, getVaultContract, type VaultParams } from "./vault";
-import { decodeRecoveryMemo, encodeRecoveryMemo, findVaultsInTransactions } from "./recovery";
+import { decodeRecoveryMemo, encodeRecoveryMemo, findVaultsInTransactions, MAX_RECOVERY_PAYLOAD, recoveryPayloadSize } from "./recovery";
 
 function keypair(seed: number) {
   const priv = new Uint8Array(32).fill(seed);
@@ -54,8 +54,8 @@ describe("recovery memo", () => {
     expect(found[0].genesisTxid).toBe("aa".repeat(32));
   });
 
-  it("refuses to encode an allowlist entry that is not in the known payee list", () => {
-    expect(() => encodeRecoveryMemo({ ...params, allowlist: [stranger.address] }, AGENT_INDEX, KNOWN)).toThrow(/not a known payee/);
+  it("refuses to encode an allowlist entry that is not a valid address", () => {
+    expect(() => encodeRecoveryMemo({ ...params, allowlist: ["hello"] }, AGENT_INDEX, KNOWN)).toThrow(/not a valid BCH address/);
   });
 
   it("ignores a memo that does not match the vault output (tampered agent key)", () => {
@@ -77,7 +77,55 @@ describe("recovery memo", () => {
   });
 
   it("decodes only well-formed memos", () => {
-    expect(decodeRecoveryMemo(new Uint8Array([0x6a, 0x04, 0x53, 0x54, 0x43, 0x48]), owner.pubHex, KNOWN)).toBeNull();
-    expect(decodeRecoveryMemo(new Uint8Array([0x51]), owner.pubHex, KNOWN)).toBeNull();
+    expect(decodeRecoveryMemo(new Uint8Array([0x6a, 0x04, 0x53, 0x54, 0x43, 0x48]), owner.pubHex, KNOWN, "chipnet")).toBeNull();
+    expect(decodeRecoveryMemo(new Uint8Array([0x51]), owner.pubHex, KNOWN, "chipnet")).toBeNull();
+  });
+
+  const p2pkh = (b: number) => encodeCashAddress({ prefix: "bchtest", type: "p2pkh", payload: new Uint8Array(20).fill(b) }).address;
+  const p2sh20 = (b: number) => encodeCashAddress({ prefix: "bchtest", type: "p2sh", payload: new Uint8Array(20).fill(b) }).address;
+  const p2sh32 = (b: number) => encodeCashAddress({ prefix: "bchtest", type: "p2sh", payload: new Uint8Array(32).fill(b) }).address;
+  const mixed: VaultParams = { ...params, allowlist: [apiB.address, p2pkh(0x11), p2sh20(0x22), p2sh32(0x33)] };
+
+  it("v2 round-trips known indexes, P2PKH, P2SH20 and P2SH32 payees", () => {
+    const chunks = encodeRecoveryMemo(mixed, AGENT_INDEX, KNOWN);
+    const script = hexToBin("6a" + "04" + binToHex(utf8ToBin("STCH")) + "4c" + ((chunks[1].length - 2) / 2).toString(16).padStart(2, "0") + chunks[1].slice(2));
+    const memo = decodeRecoveryMemo(script, owner.pubHex, KNOWN, "chipnet");
+    expect(memo?.params.allowlist).toEqual(mixed.allowlist);
+    expect(memo?.params.capPerPeriod).toBe(8_000n);
+    expect(memo?.params.periodBlocks).toBe(144n);
+    expect(memo?.agentIndex).toBe(AGENT_INDEX);
+  });
+
+  it("v1 memos still decode", () => {
+    const le = (v: number, n: number) => Uint8Array.from({ length: n }, (_, i) => (v >> (8 * i)) & 0xff);
+    const payload = flattenBinArray([
+      Uint8Array.of(1), le(AGENT_INDEX, 4), hexToBin(agent.pubHex), le(8000, 8), le(144, 4), Uint8Array.of(2, 2, 0),
+    ]);
+    const script = flattenBinArray([Uint8Array.of(0x6a, 4), utf8ToBin("STCH"), Uint8Array.of(payload.length), payload]);
+    const memo = decodeRecoveryMemo(script, owner.pubHex, KNOWN, "chipnet");
+    expect(memo?.params.allowlist).toEqual([apiC.address, apiA.address]);
+    expect(memo?.agentIndex).toBe(AGENT_INDEX);
+  });
+
+  it("payload over 215 bytes throws", () => {
+    const many = Array.from({ length: 8 }, (_, i) => p2sh32(i + 1));
+    expect(recoveryPayloadSize(many, KNOWN)).toBeGreaterThan(MAX_RECOVERY_PAYLOAD);
+    expect(() => encodeRecoveryMemo({ ...params, allowlist: many }, AGENT_INDEX, KNOWN)).toThrow(/too many custom payees/);
+  });
+
+  it("PUSHDATA1 payload is parsed", () => {
+    const p = { ...mixed };
+    const chunks = encodeRecoveryMemo(p, AGENT_INDEX, KNOWN);
+    expect((chunks[1].length - 2) / 2).toBeGreaterThan(75);
+    const hex = genesisHex(p, chunks);
+    const found = findVaultsInTransactions([{ txid: "ab".repeat(32), hex }], owner.pubHex, KNOWN, new MockNetworkProvider());
+    expect(found).toHaveLength(1);
+    expect(found[0].params).toEqual(p);
+  });
+
+  it("a memo whose rebuilt contract does not match is ignored (v2)", () => {
+    const lying = encodeRecoveryMemo({ ...mixed, agentPk: stranger.pubHex }, AGENT_INDEX, KNOWN);
+    const hex = genesisHex(mixed, lying);
+    expect(findVaultsInTransactions([{ txid: "cd".repeat(32), hex }], owner.pubHex, KNOWN, new MockNetworkProvider())).toEqual([]);
   });
 });
