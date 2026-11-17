@@ -44,3 +44,6 @@ next-env.d.ts
 
 # e2e vault descriptors (contain agent access tokens)
 .e2e-vaults/
+
+# plan execution scratch (superpowers)
+.superpowers/
