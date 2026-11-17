@@ -31,6 +31,11 @@ export const DescriptorSchema = z.object({
 
 export type VaultDescriptor = z.infer<typeof DescriptorSchema>;
 
+/** VaultParams from the JSON form used in descriptors and connect codes (sats as decimal strings). */
+export function paramsFromDescriptorParams(p: VaultDescriptor["params"]): VaultParams {
+  return { ...p, capPerPeriod: BigInt(p.capPerPeriod), periodBlocks: BigInt(p.periodBlocks) };
+}
+
 export function descriptorParams(d: VaultDescriptor): VaultParams {
   return {
     ownerPk: d.params.ownerPk,

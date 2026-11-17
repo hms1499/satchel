@@ -7,6 +7,10 @@ export const EXPLORER_TX =
 
 export const txUrl = (txid: string) => `${EXPLORER_TX}${txid}`;
 
+/** Explorer link for any network (used where the network is not this app's build-time NETWORK, e.g. the MCP server). */
+export const explorerTxUrl = (network: BchNetwork, txid: string) =>
+  `${network === "mainnet" ? "https://explorer.salemkode.com/tx/" : "https://chipnet.chaingraph.cash/tx/"}${txid}`;
+
 /** Defaults shown when creating a vault (all in sats). */
 export const DEFAULTS = {
   deposit: 20_000n,
