@@ -10,6 +10,8 @@ export interface McpConfig {
   satchelUrl: string;
   home: string;
   maxPriceSats: bigint;
+  /** Origins satchel_pay_fetch may pay: Satchel's own, plus SATCHEL_PAY_ORIGINS (comma-separated). */
+  payOrigins: string[];
   agentKeyHex?: string;
 }
 
@@ -19,11 +21,19 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const maxPrice = env.SATCHEL_MAX_PRICE_SATS || "5000";
   if (!/^\d+$/.test(maxPrice)) throw new Error(`SATCHEL_MAX_PRICE_SATS must be a whole number of sats, got "${maxPrice}"`);
   const satchelUrl = (env.SATCHEL_URL || DEFAULT_SATCHEL_URL).replace(/\/+$/, "");
+  const extraOrigins = (env.SATCHEL_PAY_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
+  let payOrigins: string[];
+  try {
+    payOrigins = [...new Set([satchelUrl, ...extraOrigins].map((o) => new URL(o).origin))];
+  } catch {
+    throw new Error(`SATCHEL_URL and SATCHEL_PAY_ORIGINS must be absolute URLs, got "${[satchelUrl, ...extraOrigins].join(", ")}"`);
+  }
   return {
     network,
     satchelUrl,
     home: env.SATCHEL_HOME || join(homedir(), ".satchel"),
     maxPriceSats: BigInt(maxPrice),
+    payOrigins,
     ...(env.SATCHEL_AGENT_KEY ? { agentKeyHex: env.SATCHEL_AGENT_KEY } : {}),
   };
 }

@@ -29,18 +29,18 @@ const text = (r: ToolResult) => r.content[0].text;
 const json = (r: ToolResult) => JSON.parse(text(r));
 
 /** A bch-sc402 provider that checks the payment on the mock chain, like Satchel's /api/tools route. */
-function fakeNetwork(provider: NodeLikeProvider, opts: { payTo?: string; price?: number; network?: string; scheme?: string; failAfterPayment?: boolean } = {}) {
+function fakeNetwork(provider: NodeLikeProvider, opts: { payTo?: string; price?: number; network?: string; scheme?: string; failAfterPayment?: boolean; resource?: string; expiresInMs?: number } = {}) {
   const payTo = opts.payTo ?? provider3.address;
   const calls: string[] = [];
   const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push(url);
     if (url === `${SATCHEL_URL}/api/config`) {
-      return Response.json({ network: "mainnet", tools: [{ name: "crypto-price", title: "Crypto price feed", description: "d", price: "1000", payTo }] });
+      return Response.json({ network: "mainnet", tools: [{ name: "crypto-price", title: "Crypto price feed", description: "d", price: "1000", payTo, params: { id: "CoinGecko coin id" } }] });
     }
     const header = new Headers(init?.headers).get("x-payment");
     if (!header) {
-      const challenge: Challenge = { resource: "/api/tools/crypto-price", payTo, amount: String(opts.price ?? 1000), nonce: binToHex(crypto.getRandomValues(new Uint8Array(16))), expires: Date.now() + 600_000, network: opts.network ?? "mainnet", request: "aa".repeat(32), sig: "bb".repeat(32) };
+      const challenge: Challenge = { resource: opts.resource ?? new URL(url).pathname, payTo, amount: String(opts.price ?? 1000), nonce: binToHex(crypto.getRandomValues(new Uint8Array(16))), expires: Date.now() + (opts.expiresInMs ?? 600_000), network: opts.network ?? "mainnet", request: "aa".repeat(32), sig: "bb".repeat(32) };
       return Response.json({ error: "payment required", accepts: [{ scheme: opts.scheme ?? "bch-sc402", ...challenge }] }, { status: 402 });
     }
     const { challenge, txid } = JSON.parse(Buffer.from(header, "base64").toString("utf8")) as { challenge: Challenge; txid: string };
@@ -193,6 +193,45 @@ describe("satchel_pay_fetch", () => {
     expect(text(r)).toMatch(/price source returned 503/);
   });
 
+  it("does not pay an endpoint outside Satchel's origin (prompt-injected URL)", async () => {
+    const { code } = await createVault();
+    const h = handlers(fakeNetwork(provider).fetchFn);
+    await h.connect(code);
+    const before = provider.spent.size;
+    const r = await h.payFetch({ url: "https://evil.example/api/tools/crypto-price" });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/not an allowed payment origin/);
+    expect(provider.spent.size).toBe(before);
+  });
+
+  it("pays an extra origin the user listed in SATCHEL_PAY_ORIGINS", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://other.test, https://more.test" });
+    const { code } = await createVault();
+    const h = handlers(fakeNetwork(provider).fetchFn);
+    await h.connect(code);
+    expect((await h.payFetch({ url: "https://other.test/api/tools/crypto-price" })).isError).toBeFalsy();
+  });
+
+  it("does not pay a challenge issued for another resource (relayed challenge)", async () => {
+    const { code } = await createVault();
+    const h = handlers(fakeNetwork(provider, { resource: "/api/tools/deep-analysis" }).fetchFn);
+    await h.connect(code);
+    const before = provider.spent.size;
+    const r = await h.payFetch({ url: TOOL_URL });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/another resource/);
+    expect(provider.spent.size).toBe(before);
+  });
+
+  it("does not pay a challenge that is about to expire", async () => {
+    const { code } = await createVault();
+    const h = handlers(fakeNetwork(provider, { expiresInMs: 5_000 }).fetchFn);
+    await h.connect(code);
+    const r = await h.payFetch({ url: TOOL_URL });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/expire/);
+  });
+
   it("serializes payments made in parallel", async () => {
     const { code } = await createVault();
     const h = handlers(fakeNetwork(provider).fetchFn);
@@ -230,6 +269,6 @@ describe("satchel_catalog", () => {
     const h = handlers(fakeNetwork(provider).fetchFn);
     await h.connect(code);
     const out = json(await h.catalog());
-    expect(out.tools[0]).toMatchObject({ name: "crypto-price", endpoint: TOOL_URL, price: "1000", allowed: true });
+    expect(out.tools[0]).toMatchObject({ name: "crypto-price", endpoint: TOOL_URL, price: "1000", allowed: true, params: { id: "CoinGecko coin id" } });
   });
 });

@@ -25,6 +25,9 @@ const fail = (message: string): ToolResult => ({ content: [{ type: "text", text:
 const NOT_CONNECTED = "No vault is connected. Run satchel_setup, create the vault from its link, then paste the connect code into satchel_connect.";
 const CLOSED = "The vault is closed: its owner withdrew the funds. Run satchel_setup to create a new vault for this agent.";
 
+/** A challenge must leave time to pay and retry before it expires. */
+const MIN_CHALLENGE_LIFETIME_MS = 30_000;
+
 const sameAddress = (a: string, b: string) => binToHex(lockingBytecodeOf(a)) === binToHex(lockingBytecodeOf(b));
 
 export function createHandlers(deps: HandlerDeps) {
@@ -111,7 +114,7 @@ export function createHandlers(deps: HandlerDeps) {
     async catalog(): Promise<ToolResult> {
       const res = await deps.fetch(`${cfg.satchelUrl}/api/config`).catch(() => null);
       if (!res?.ok) return fail(`Could not load the tool catalog from ${cfg.satchelUrl}.`);
-      const config = (await res.json()) as { tools: { name: string; title: string; description: string; price: string; payTo: string }[] };
+      const config = (await res.json()) as { tools: { name: string; title: string; description: string; price: string; payTo: string; params?: Record<string, string> }[] };
       const info = loadVault(cfg);
       const allowlist = info?.params.allowlist ?? [];
       return ok({
@@ -121,6 +124,7 @@ export function createHandlers(deps: HandlerDeps) {
           description: t.description,
           endpoint: `${cfg.satchelUrl}/api/tools/${t.name}`,
           price: t.price,
+          params: t.params ?? {},
           payTo: t.payTo,
           allowed: allowlist.some((a) => sameAddress(a, t.payTo)),
         })),
@@ -129,6 +133,17 @@ export function createHandlers(deps: HandlerDeps) {
     },
 
     async payFetch(args: { url: string; method?: "GET" | "POST"; body?: Record<string, unknown> }): Promise<ToolResult> {
+      let targetUrl: URL;
+      try {
+        targetUrl = new URL(args.url);
+      } catch {
+        return fail(`Not paying: "${args.url}" is not a valid URL.`);
+      }
+      // Pay only providers the user trusts: Satchel's own origin, plus any listed in SATCHEL_PAY_ORIGINS. A URL the
+      // agent picked up from a web page or a document (prompt injection) cannot make the vault pay.
+      if (!cfg.payOrigins.includes(targetUrl.origin)) {
+        return fail(`Not paying: ${targetUrl.origin} is not an allowed payment origin (allowed: ${cfg.payOrigins.join(", ")}). The user can add it to SATCHEL_PAY_ORIGINS.`);
+      }
       const v = await openVault();
       if ("error" in v) return v.error;
       const method = args.method ?? "POST";
@@ -153,6 +168,12 @@ export function createHandlers(deps: HandlerDeps) {
       const parsed = parseChallenge(firstBody, cfg.network);
       if (!parsed.ok) return fail(`Not paying: ${parsed.error}.`);
       const { challenge } = parsed;
+      // The challenge must be for the endpoint we called (a challenge relayed from another resource is refused)
+      // and must not be about to expire.
+      if (challenge.resource !== targetUrl.pathname) {
+        return fail(`Not paying: the payment challenge is for another resource (${challenge.resource}), not ${targetUrl.pathname}.`);
+      }
+      if (challenge.expires < Date.now() + MIN_CHALLENGE_LIFETIME_MS) return fail("Not paying: the payment challenge is expired or about to expire.");
       const amount = BigInt(challenge.amount);
       if (!v.params.allowlist.some((a) => sameAddress(a, challenge.payTo))) {
         return fail(`Not paying: payee ${challenge.payTo} is not in this vault's allowlist; not paying.`);

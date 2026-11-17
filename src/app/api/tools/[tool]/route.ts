@@ -3,7 +3,7 @@ import { providerKeys } from "@/lib/server/keys";
 import { createChallenge, requestDigest, verifyPayment } from "@/lib/server/x402";
 import { logEvent } from "@/lib/server/log";
 import { paidResults } from "@/lib/server/result-cache";
-import { runTool, ToolInputError } from "@/lib/server/tool-impl";
+import { runTool, ToolInputError, validateToolInput } from "@/lib/server/tool-impl";
 
 /**
  * Paid tool endpoint (HTTP 402 pay-per-call on Bitcoin Cash).
@@ -22,6 +22,13 @@ async function handle(request: Request, ctx: { params: Promise<{ tool: string }>
     params = new URLSearchParams(Object.entries(body).map(([k, v]) => [k, String(v)]));
   } else {
     params = new URL(request.url).searchParams;
+  }
+  // Reject input that can only fail before asking for payment.
+  try {
+    validateToolInput(name, params);
+  } catch (e) {
+    if (e instanceof ToolInputError) return Response.json({ error: e.message }, { status: 400 });
+    throw e;
   }
   // The payment is bound to this exact request (see x402.ts): a paid header cannot buy a different call.
   const digest = requestDigest(name, params);

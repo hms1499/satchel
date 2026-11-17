@@ -5,18 +5,21 @@ export const PAID_TOOLS = {
     description: "Live USD price, 24h change and market cap for a cryptocurrency (CoinGecko id, e.g. bitcoin-cash).",
     price: 1_000n,
     provider: 0,
+    params: { id: "CoinGecko coin id, e.g. bitcoin-cash (default), ethereum, bitcoin" },
   },
   "web-reader": {
     title: "Web page reader",
     description: "Fetches a public web page and returns its readable text (first ~4000 characters).",
     price: 1_500n,
     provider: 1,
+    params: { url: "A public https:// URL" },
   },
   "deep-analysis": {
     title: "Deep analysis",
     description: "A premium analyst model that writes a concise, structured analysis of the provided material.",
     price: 3_000n,
     provider: 2,
+    params: { question: "What to analyse (required)", material: "The facts or text to analyse" },
   },
 } as const;
 

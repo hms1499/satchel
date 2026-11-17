@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { SignatureTemplate, randomUtxo } from "cashscript";
 import { binToHex, encodeCashAddress, hash160, secp256k1 } from "@bitauth/libauth";
 import { NodeLikeProvider } from "./test-utils/node-like-provider";
-import { buildGenesis, getVaultContract, type VaultParams } from "./vault";
+import { buildGenesis, findVaultUtxo, getVaultContract, type VaultParams } from "./vault";
 import { VaultSpender, type SpendTarget } from "./spend";
 import { parseChallenge } from "./x402-client";
 
@@ -40,6 +40,23 @@ describe("VaultSpender", () => {
     expect(fromB.ok).toBe(false);
     if (!fromB.ok) expect(fromB.reason).toMatch(/busy/i);
     expect((await a.pay(t, payee.address, 1000n)).ok).toBe(true);
+  });
+
+  it("falls back to the network's vault UTXO when its own last broadcast was dropped", async () => {
+    const t = await vault();
+    const genesis = (await findVaultUtxo(t.contract))!;
+    const spender = new VaultSpender();
+    const first = await spender.pay(t, payee.address, 1000n);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    // The broadcast never propagated: the network forgets it and still has the genesis vault UTXO.
+    t.provider.dropped.add(`${first.txid}:0`);
+    t.provider.spent.delete(`${genesis.txid}:${genesis.vout}`);
+    t.provider.addUtxo(t.contract.tokenAddress, genesis);
+    await t.provider.freeze([t.contract.address, t.contract.tokenAddress], 0);
+    t.provider.stale.set(t.contract.address, [genesis]);
+    t.provider.lagCalls = 1000;
+    expect((await spender.pay(t, payee.address, 1000n)).ok).toBe(true);
   });
 });
 

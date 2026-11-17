@@ -1,12 +1,12 @@
 import { generateText } from "ai";
-import type { ToolName } from "../tools";
+import { PAID_TOOLS, type ToolName } from "../tools";
 import { AGENT_MODEL, hasLlm } from "./llm";
 
 export class ToolInputError extends Error {}
 
 async function cryptoPrice(params: URLSearchParams) {
   const id = (params.get("id") ?? "bitcoin-cash").toLowerCase();
-  if (!/^[a-z0-9-]{2,60}$/.test(id)) throw new ToolInputError("id must be a CoinGecko coin id, e.g. bitcoin-cash");
+  if (!COIN_ID.test(id)) throw new ToolInputError("id must be a CoinGecko coin id, e.g. bitcoin-cash");
   const url = `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd&include_24hr_change=true&include_market_cap=true`;
   const res = await fetch(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`price source returned ${res.status}`);
@@ -93,6 +93,27 @@ async function deepAnalysis(params: URLSearchParams) {
     prompt: `Question: ${question}\n\nMaterial:\n${material}`,
   });
   return { analysis: text, model: AGENT_MODEL };
+}
+
+const COIN_ID = /^[a-z0-9-]{2,60}$/;
+
+/**
+ * Checks a request before any payment is asked for, so a caller never pays for a call that can only fail:
+ * unknown parameter names (an agent guessing names), missing or invalid required values.
+ */
+export function validateToolInput(name: ToolName, params: URLSearchParams): void {
+  const expected = Object.keys(PAID_TOOLS[name].params);
+  for (const key of params.keys()) {
+    if (!expected.includes(key)) throw new ToolInputError(`unknown parameter "${key}"; expected: ${expected.join(", ")}`);
+  }
+  if (name === "crypto-price") {
+    const id = params.get("id");
+    if (id !== null && !COIN_ID.test(id.toLowerCase())) throw new ToolInputError("id must be a CoinGecko coin id, e.g. bitcoin-cash");
+  } else if (name === "web-reader") {
+    isPublicHttpsUrl(params.get("url") ?? "");
+  } else if (!params.get("question")) {
+    throw new ToolInputError("question is required");
+  }
 }
 
 export async function runTool(name: ToolName, params: URLSearchParams): Promise<unknown> {

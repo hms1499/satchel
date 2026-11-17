@@ -38,7 +38,8 @@ export function loadOrCreateAgentKey(cfg: McpConfig): AgentKey {
       if (parsed.v !== 1 || !/^[0-9a-f]{64}$/.test(parsed.privateKey ?? "")) throw new Error("unexpected format");
       return fromPrivateKey(hexToBin(parsed.privateKey!), false);
     } catch (e) {
-      const why = e instanceof Error ? e.message : String(e);
+      // Never quote the file: a JSON parse error message can contain a fragment of the private key.
+      const why = e instanceof SyntaxError ? "not valid JSON" : e instanceof Error ? e.message : String(e);
       throw new Error(`${path} is unreadable: ${why}; fix or move it, Satchel will not overwrite it`);
     }
   }

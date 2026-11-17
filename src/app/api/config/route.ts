@@ -14,6 +14,7 @@ export async function GET() {
       title: PAID_TOOLS[name].title,
       description: PAID_TOOLS[name].description,
       price: PAID_TOOLS[name].price.toString(),
+      params: PAID_TOOLS[name].params,
       payTo: providers[PAID_TOOLS[name].provider].address,
     })),
   });

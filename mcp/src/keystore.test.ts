@@ -52,6 +52,19 @@ describe("agent key store", () => {
     expect(existsSync(join(home, "agent.json"))).toBe(false);
   });
 
+  it("never quotes key material when the key file is corrupted", () => {
+    loadOrCreateAgentKey(cfg);
+    writeFileSync(join(home, "agent.json"), `{"v":1,"privateKey":${"ab".repeat(32)}}`);
+    let message = "";
+    try {
+      loadOrCreateAgentKey(cfg);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).toMatch(/unreadable/);
+    expect(message).not.toMatch(/abab/);
+  });
+
   it("refuses a corrupted key file and leaves it untouched", () => {
     loadOrCreateAgentKey(cfg);
     const path = join(home, "agent.json");

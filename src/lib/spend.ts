@@ -70,7 +70,7 @@ export class VaultSpender {
     const fromNetwork = await findVaultUtxo(t.contract, skip);
     const cached = this.successor.get(t.contract.address);
     const outpoint = (u: SpendableUtxo) => `${u.txid}:${u.vout}`;
-    if (cached && fromNetwork && outpoint(fromNetwork) === cached.spent) return cached.next;
+    if (cached && fromNetwork && outpoint(fromNetwork) === cached.spent && !skip.has(outpoint(cached.next))) return cached.next;
     // Electrum may lag more than one payment behind: once its view proved stale, trust our own last broadcast.
     if (!fromNetwork && skip.size > 0 && cached && !skip.has(outpoint(cached.next))) return cached.next;
     return fromNetwork;

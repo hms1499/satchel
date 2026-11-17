@@ -8,6 +8,8 @@ export class NodeLikeProvider extends MockNetworkProvider {
   lagCalls = 0;
   stale = new Map<string, SpendableUtxo[]>();
   spent = new Set<string>();
+  /** Outpoints of transactions that "never propagated": spending them fails like an unknown input. */
+  dropped = new Set<string>();
 
   async getUtxos(address: string) {
     if (this.lagCalls > 0 && this.stale.has(address)) {
@@ -21,6 +23,7 @@ export class NodeLikeProvider extends MockNetworkProvider {
     const tx = decodeTransaction(hexToBin(hex));
     if (typeof tx === "string") return super.sendRawTransaction(hex);
     const outpoints = tx.inputs.map((i) => `${binToHex(i.outpointTransactionHash)}:${i.outpointIndex}`);
+    if (outpoints.some((o) => this.dropped.has(o))) throw new Error("the transaction was rejected by network rules.\n\nbad-txns-inputs-missingorspent (code 16)");
     if (outpoints.some((o) => this.spent.has(o))) throw new Error("the transaction was rejected by network rules.\n\ntxn-mempool-conflict (code 18)");
     const txid = await super.sendRawTransaction(hex);
     outpoints.forEach((o) => this.spent.add(o));
