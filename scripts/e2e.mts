@@ -7,21 +7,27 @@
  *   npx tsx scripts/e2e.mts sweep            # move what the agent paid to the provider addresses back to the owner
  *   npx tsx scripts/e2e.mts refund <address> # send everything the test owner holds to <address>
  *
+ *   npx tsx scripts/e2e.mts withdraw <file>  # owner-withdraw a vault saved in .e2e-vaults/ (recovery after a crash)
+ *
+ * E2E_DEPOSIT / E2E_CAP (sats) override the defaults of 20000 / 8000.
  * Mainnet needs NEXT_PUBLIC_BCH_NETWORK=mainnet and E2E_ALLOW_MAINNET=1 (real money; keep amounts tiny).
  * Owner keys are stored per network as CHIPNET_OWNER_SEED / MAINNET_OWNER_SEED in .env.local (gitignored).
  */
-import { appendFileSync, existsSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes, createHash } from "node:crypto";
 import { ElectrumNetworkProvider, SignatureTemplate, TransactionBuilder, type SpendableUtxo } from "cashscript";
 import { binToHex, publicKeyToP2pkhCashAddress } from "@bitauth/libauth";
 import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, type VaultParams } from "../src/lib/vault";
-import { paramsToDescriptorParams, type VaultDescriptor } from "../src/lib/descriptor";
+import { descriptorParams, paramsToDescriptorParams, type VaultDescriptor } from "../src/lib/descriptor";
 
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");
 const BASE = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const NETWORK = process.env.NEXT_PUBLIC_BCH_NETWORK === "mainnet" ? "mainnet" : "chipnet";
 const PREFIX = NETWORK === "mainnet" ? "bitcoincash" : "bchtest";
 const EXPLORER = NETWORK === "mainnet" ? "https://explorer.salemkode.com/tx/" : "https://chipnet.chaingraph.cash/tx/";
+const DEPOSIT = BigInt(process.env.E2E_DEPOSIT ?? "20000");
+const CAP = BigInt(process.env.E2E_CAP ?? "8000");
+const VAULT_DIR = ".e2e-vaults"; // descriptors saved before broadcast, so a crashed run can still withdraw (gitignored)
 
 if (NETWORK === "mainnet" && process.env.E2E_ALLOW_MAINNET !== "1") {
   throw new Error("Mainnet uses real BCH. Set E2E_ALLOW_MAINNET=1 to confirm.");
@@ -70,7 +76,8 @@ async function sweepTo(utxos: SpendableUtxo[], signer: SignatureTemplate, to: st
 async function ensureVoutZeroUtxo() {
   let utxos = (await provider.getUtxos(owner.address)).filter((u) => !u.token);
   const total = utxos.reduce((s, u) => s + u.satoshis, 0n);
-  if (total < 30_000n) throw new Error(`Owner ${owner.address} has ${total} sats; fund it with >= 30,000 sats`);
+  const needed = DEPOSIT + 2_000n;
+  if (total < needed) throw new Error(`Owner ${owner.address} has ${total} sats; fund it with >= ${needed} sats`);
   if (!utxos.some((u) => u.vout === 0)) {
     log("No vout-0 UTXO; consolidating to self first…");
     const r = await sweepTo(utxos, owner.signer, owner.address);
@@ -89,7 +96,7 @@ async function run() {
   const params: VaultParams = {
     ownerPk: owner.pubHex,
     agentPk: agent.agentPk,
-    capPerPeriod: 8_000n,
+    capPerPeriod: CAP,
     periodBlocks: 144n,
     allowlist: config.tools.map((t: { payTo: string }) => t.payTo),
   };
@@ -101,21 +108,26 @@ async function run() {
   const { builder, category } = buildGenesis({
     contract,
     inputs: utxos.map((utxo) => ({ utxo, unlocker: owner.signer.unlockP2PKH() })),
-    deposit: 20_000n,
+    deposit: DEPOSIT,
     startHeight,
     changeAddress: owner.address,
   });
-  const genesis = await builder.send();
-  log("genesis tx:", tx(genesis.txid), "\ncategory:", category);
-
+  // Save the descriptor before broadcasting: withdrawing needs the params (agentPk), which the chain doesn't reveal.
   const descriptor: VaultDescriptor = {
     version: 1,
     network: NETWORK,
     agentIndex: agent.agentIndex,
     token: agent.token,
     params: paramsToDescriptorParams(params),
-    genesisTxid: genesis.txid,
   };
+  mkdirSync(VAULT_DIR, { recursive: true });
+  const saved = `${VAULT_DIR}/${NETWORK}-${category.slice(0, 12)}.json`;
+  writeFileSync(saved, JSON.stringify(descriptor, null, 2));
+  log("descriptor saved:", saved);
+  const genesis = await builder.send();
+  descriptor.genesisTxid = genesis.txid;
+  writeFileSync(saved, JSON.stringify(descriptor, null, 2));
+  log("genesis tx:", tx(genesis.txid), "\ncategory:", category);
 
   await new Promise((r) => setTimeout(r, 1500));
   log("status:", await post("/api/vault/status", { descriptor }));
@@ -170,6 +182,15 @@ async function main() {
     log("balance:", utxos.reduce((s, u) => s + u.satoshis, 0n).toString(), "sats in", utxos.length, "utxos");
   } else if (cmd === "run") {
     await run();
+  } else if (cmd === "withdraw") {
+    const file = process.argv[3];
+    if (!file) throw new Error("Usage: withdraw .e2e-vaults/<file>.json");
+    const d = JSON.parse(readFileSync(file, "utf8")) as VaultDescriptor;
+    const contract = getVaultContract(descriptorParams(d), provider);
+    const vaultUtxo = await findVaultUtxo(contract);
+    if (!vaultUtxo) throw new Error(`No vault UTXO at ${contract.address}`);
+    const w = await buildWithdraw({ contract, vaultUtxo, to: owner.address, ownerSigner: owner.signer }).send();
+    log("withdraw tx:", tx(w.txid));
   } else if (cmd === "sweep") {
     await sweepProviders();
   } else if (cmd === "refund") {

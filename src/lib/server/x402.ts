@@ -26,6 +26,15 @@ export interface Challenge {
   sig: string;
 }
 
+/**
+ * HMAC over the signed fields only, in a fixed order. Extra fields a client echoes back (such as `scheme`
+ * from the 402 `accepts` entry) must not change the signature.
+ */
+export function signChallengeBody(c: Omit<Challenge, "sig">): string {
+  const { resource, payTo, amount, nonce, expires, network } = c;
+  return hmac(JSON.stringify({ resource, payTo, amount, nonce, expires, network }));
+}
+
 export function createChallenge(resource: string, payTo: string, amount: bigint): Challenge {
   const body = {
     resource,
@@ -35,7 +44,15 @@ export function createChallenge(resource: string, payTo: string, amount: bigint)
     expires: Date.now() + CHALLENGE_TTL_MS,
     network: NETWORK,
   };
-  return { ...body, sig: hmac(JSON.stringify(body)) };
+  return { ...body, sig: signChallengeBody(body) };
+}
+
+/** Checks a challenge echoed back by a client. Returns an error message, or null when it is valid. */
+export function checkChallenge(challenge: Challenge | undefined, resource: string): string | null {
+  if (!challenge?.sig || signChallengeBody(challenge) !== challenge.sig) return "invalid challenge signature";
+  if (challenge.resource !== resource) return "challenge is for a different resource";
+  if (Date.now() > challenge.expires) return "challenge expired";
+  return null;
 }
 
 export function memoForChallenge(c: Pick<Challenge, "nonce">): string {
@@ -58,10 +75,8 @@ export async function verifyPayment(header: string | null, resource: string): Pr
     return { ok: false, error: "malformed X-Payment header" };
   }
   const { challenge, txid } = parsed;
-  const { sig, ...body } = challenge ?? ({} as Challenge);
-  if (!sig || hmac(JSON.stringify(body)) !== sig) return { ok: false, error: "invalid challenge signature" };
-  if (challenge.resource !== resource) return { ok: false, error: "challenge is for a different resource" };
-  if (Date.now() > challenge.expires) return { ok: false, error: "challenge expired" };
+  const invalid = checkChallenge(challenge, resource);
+  if (invalid) return { ok: false, error: invalid };
   if (usedNonces.has(challenge.nonce)) return { ok: false, error: "payment already used" };
   if (!/^[0-9a-f]{64}$/.test(txid ?? "")) return { ok: false, error: "invalid txid" };
 

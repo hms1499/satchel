@@ -10,7 +10,6 @@ import {
   getVaultContract,
   remainingBudget,
   type VaultParams,
-  type VaultState,
 } from "../vault";
 import { agentKey, attackerAddress, verifyAccess } from "./keys";
 import { getProvider } from "./electrum";
@@ -56,7 +55,7 @@ export interface VaultStatus {
   address: string;
   tokenAddress: string;
   balance: string;
-  state: VaultState | null;
+  state: { periodStart: number; spent: string } | null; // sats as a string (JSON has no bigint)
   tipHeight: number;
   remaining: string;
   resetsAtHeight: number;
@@ -72,7 +71,7 @@ export async function vaultStatus(o: Opened): Promise<VaultStatus> {
     address: o.contract.address,
     tokenAddress: o.contract.tokenAddress,
     balance: (utxo?.satoshis ?? 0n).toString(),
-    state: state ? { periodStart: state.periodStart, spent: state.spent } : null,
+    state: state ? { periodStart: state.periodStart, spent: state.spent.toString() } : null,
     tipHeight,
     remaining: budget.remaining.toString(),
     resetsAtHeight: budget.resetsAtHeight,

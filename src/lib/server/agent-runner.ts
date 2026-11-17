@@ -58,29 +58,32 @@ async function runScripted(prompt: string, tools: ReturnType<typeof makeTools>, 
   emit({ type: "thought", text: "First, live prices for BCH and ETH." });
   for (const id of ["bitcoin-cash", "ethereum"]) {
     const r = await exec(tools.crypto_price, { id });
-    if (r.error) return finish(facts, emit, true);
+    if (r.error) return finish(facts, emit, String(r.error));
     facts.push(`${id} price $${r.priceUsd}, 24h ${r.change24hPct}%`);
   }
   emit({ type: "thought", text: "Now some background reading." });
   const page = await exec(tools.read_web_page, { url: "https://en.wikipedia.org/wiki/Bitcoin_Cash" });
-  if (page.error) return finish(facts, emit, true);
+  if (page.error) return finish(facts, emit, String(page.error));
   facts.push(String(page.text ?? "").slice(0, 1500));
   emit({ type: "thought", text: "Asking the analyst for a brief, then an extended version." });
   for (const question of [prompt, `${prompt} (extended version with more detail)`]) {
     const r = await exec(tools.deep_analysis, { question, material: facts.join("\n") });
-    if (r.error) return finish(facts, emit, true);
+    if (r.error) return finish(facts, emit, String(r.error));
     facts.push(String(r.analysis ?? ""));
   }
-  return finish(facts, emit, false);
+  return finish(facts, emit);
 }
 
-function finish(facts: string[], emit: Emit, capped: boolean) {
+function finish(facts: string[], emit: Emit, error?: string) {
   const prices = facts.filter((f) => f.includes(" price $")).join("; ");
+  const bought = `What I bought so far: ${prices || "no data yet"}.`;
   emit({
     type: "final",
-    text: capped
-      ? `My vault refused the last payment: this period's budget is used up. What I bought so far: ${prices || "no data yet"}.`
-      : `Done. ${prices}`,
+    text: !error
+      ? `Done. ${prices}`
+      : error.startsWith("Payment refused")
+        ? `My vault refused the last payment: this period's budget is used up. ${bought}`
+        : `I had to stop: ${error}. ${bought}`,
   });
 }
 
