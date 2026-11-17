@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mkdtempSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,6 +22,8 @@ function keypair(seed: number) {
 const owner = keypair(1);
 const provider3 = keypair(3);
 const stranger = keypair(8);
+/** A custom payee (not one of Satchel's tools). */
+const alice = keypair(5).address;
 const SATCHEL_URL = "https://satchel.test";
 const TOOL_URL = `${SATCHEL_URL}/api/tools/crypto-price`;
 
@@ -64,18 +66,26 @@ beforeEach(() => {
 });
 
 /** Owner creates a vault for this MCP's agent key; returns its connect code. */
-async function createVault(opts: { cap?: bigint; agentPk?: string; network?: "mainnet" | "chipnet" } = {}) {
+async function createVault(
+  opts: { cap?: bigint; agentPk?: string; network?: "mainnet" | "chipnet"; allowlist?: string[]; labels?: Record<string, string>; sellers?: string[] } = {},
+) {
   const agentPk = opts.agentPk ?? loadOrCreateAgentKey(cfg).pubHex;
-  const params: VaultParams = { ownerPk: owner.pubHex, agentPk, capPerPeriod: opts.cap ?? 8_000n, periodBlocks: 144n, allowlist: [provider3.address] };
+  const params: VaultParams = { ownerPk: owner.pubHex, agentPk, capPerPeriod: opts.cap ?? 8_000n, periodBlocks: 144n, allowlist: opts.allowlist ?? [provider3.address] };
   const contract = getVaultContract(params, provider);
   const u = provider.addUtxo(owner.address, { txid: binToHex(crypto.getRandomValues(new Uint8Array(32))), vout: 0, satoshis: 100_000n });
   await buildGenesis({ contract, inputs: [{ utxo: u, unlocker: owner.signer.unlockP2PKH() }], deposit: 20_000n, startHeight: 1000, changeAddress: owner.address }).builder.send();
-  const info: ConnectInfo = { v: 1, network: opts.network ?? "mainnet", params: paramsToDescriptorParams(params) };
+  const info: ConnectInfo = {
+    v: 1,
+    network: opts.network ?? "mainnet",
+    params: paramsToDescriptorParams(params),
+    ...(opts.labels ? { labels: opts.labels } : {}),
+    ...(opts.sellers ? { sellers: opts.sellers } : {}),
+  };
   return { code: encodeConnectCode(info), contract };
 }
 
-function handlers(fetchFn: typeof fetch) {
-  return createHandlers({ cfg, provider, fetch: fetchFn, spender: new VaultSpender() });
+function handlers(fetchFn: typeof fetch, spender = new VaultSpender()) {
+  return createHandlers({ cfg, provider, fetch: fetchFn, spender });
 }
 
 describe("satchel_setup", () => {
@@ -148,6 +158,15 @@ describe("satchel_pay_fetch", () => {
     expect(r.isError).toBe(true);
     expect(text(r)).toMatch(/not in this vault's allowlist/);
     expect(provider.spent.size).toBe(before);
+  });
+
+  it("pays a challenge whose payTo is the token-aware (z…) form of an allowlisted payee", async () => {
+    const { code } = await createVault();
+    const zForm = encodeCashAddress({ prefix: "bchtest", type: "p2pkhWithTokens", payload: hash160(hexToBin(provider3.pubHex)) }).address;
+    const h = handlers(fakeNetwork(provider, { payTo: zForm }).fetchFn);
+    await h.connect(code);
+    const r = await h.payFetch({ url: TOOL_URL });
+    expect(r.isError).toBeFalsy();
   });
 
   it("does not pay more than SATCHEL_MAX_PRICE_SATS", async () => {
@@ -270,5 +289,174 @@ describe("satchel_catalog", () => {
     await h.connect(code);
     const out = json(await h.catalog());
     expect(out.tools[0]).toMatchObject({ name: "crypto-price", endpoint: TOOL_URL, price: "1000", allowed: true, params: { id: "CoinGecko coin id" } });
+  });
+});
+
+describe("config", () => {
+  it("reads SATCHEL_MAX_SEND_SATS (default 10000) and rejects a value that is not a whole number", () => {
+    expect(loadConfig({ SATCHEL_HOME: cfg.home }).maxSendSats).toBe(10_000n);
+    expect(loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_MAX_SEND_SATS: "2500" }).maxSendSats).toBe(2_500n);
+    expect(() => loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_MAX_SEND_SATS: "1e4" })).toThrow(/SATCHEL_MAX_SEND_SATS/);
+  });
+});
+
+describe("satchel_send", () => {
+  // The mock chain uses chipnet (bchtest:) addresses, so sends that reach the chain run on chipnet.
+  beforeEach(() => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_NETWORK: "chipnet" });
+  });
+
+  /** A vault whose allowlist has Satchel's tool payee plus a labelled custom payee (alice). */
+  async function connectedWithAlice(fetchFn = fakeNetwork(provider).fetchFn) {
+    const network = cfg.network;
+    const { code, contract } = await createVault({ network, allowlist: [provider3.address, alice], labels: { [alice]: "Alice" } });
+    const spender = new VaultSpender();
+    const pay = vi.spyOn(spender, "pay");
+    const h = handlers(fetchFn, spender);
+    await h.connect(code);
+    return { h, pay, contract };
+  }
+
+  it("pays an allowlisted custom payee and writes SATM + the memo in the tx", async () => {
+    const { h, contract } = await connectedWithAlice();
+    const r = await h.send({ to: alice, amountSats: 2_000, memo: "thanks" });
+    expect(r.isError).toBeFalsy();
+    const out = json(r);
+    expect(out).toMatchObject({ to: alice, label: "Alice", amount: "2000", spentThisPeriod: expect.any(String), remaining: expect.any(String) });
+    expect(out.txid).toMatch(/^[0-9a-f]{64}$/);
+    expect(out.explorer).toContain(out.txid);
+    const tx = decodeTransaction(hexToBin(await provider.getRawTransaction(out.txid)));
+    if (typeof tx === "string") throw new Error(tx);
+    expect(binToHex(tx.outputs[1].lockingBytecode)).toBe(binToHex(lockingBytecodeOf(alice)));
+    expect(tx.outputs[1].valueSatoshis).toBe(2_000n);
+    const memoHex = binToHex(new TextEncoder().encode("SATMthanks"));
+    expect(binToHex(tx.outputs[2].lockingBytecode)).toContain(memoHex);
+    expect(tx.outputs[2].valueSatoshis).toBe(0n);
+    const after = await findVaultUtxo(contract);
+    expect(after!.satoshis).toBe(20_000n - 2_000n - BigInt(out.fee));
+    expect(out.balance).toBe(after!.satoshis.toString());
+  });
+
+  it("accepts the token-aware (z…) form of an allowlisted payee and pays the allowlisted address", async () => {
+    const { h } = await connectedWithAlice();
+    const zForm = encodeCashAddress({ prefix: "bchtest", type: "p2pkhWithTokens", payload: hash160(hexToBin(keypair(5).pubHex)) }).address;
+    const r = await h.send({ to: zForm, amountSats: 1_000 });
+    expect(r.isError).toBeFalsy();
+    expect(json(r)).toMatchObject({ to: alice, label: "Alice", amount: "1000" });
+  });
+
+  it("refuses an address outside the allowlist and never calls the spender", async () => {
+    const { h, pay } = await connectedWithAlice();
+    const r = await h.send({ to: stranger.address, amountSats: 1_000 });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/not in this vault's allowlist/);
+    expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("refuses an amount above SATCHEL_MAX_SEND_SATS", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_NETWORK: "chipnet", SATCHEL_MAX_SEND_SATS: "3000" });
+    const { h, pay } = await connectedWithAlice();
+    const r = await h.send({ to: alice, amountSats: 3_001 });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/SATCHEL_MAX_SEND_SATS/);
+    expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("refuses a memo over 100 UTF-8 bytes even when its JS length is shorter (34 emoji = 136 bytes)", async () => {
+    const { h, pay } = await connectedWithAlice();
+    const memo = "😀".repeat(34);
+    expect(memo.length).toBeLessThan(100);
+    const r = await h.send({ to: alice, amountSats: 1_000, memo });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/100 bytes/);
+    expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("refuses a bchtest: address on mainnet, even one whose script is in the allowlist", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL });
+    const { h, pay } = await connectedWithAlice();
+    const r = await h.send({ to: alice, amountSats: 1_000 });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/chipnet/);
+    expect(pay).not.toHaveBeenCalled();
+  });
+
+  it("asks to connect first when no vault is connected", async () => {
+    const r = await handlers(fakeNetwork(provider).fetchFn).send({ to: alice, amountSats: 1_000 });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/satchel_setup/);
+  });
+
+  it("reports the covenant's refusal like satchel_pay_fetch", async () => {
+    const { code } = await createVault({ network: "chipnet", cap: 2_000n, allowlist: [alice] });
+    const h = handlers(fakeNetwork(provider).fetchFn);
+    await h.connect(code);
+    const r = await h.send({ to: alice, amountSats: 2_500 });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toMatch(/^The vault's covenant refused this payment/);
+  });
+});
+
+describe("labels and sellers", () => {
+  it("status lists the payees with the labels from the connect code", async () => {
+    const { code } = await createVault({ allowlist: [provider3.address, alice], labels: { [alice]: "Alice" } });
+    const h = handlers(fakeNetwork(provider).fetchFn);
+    await h.connect(code);
+    expect(json(await h.status()).payees).toEqual([
+      { address: provider3.address, label: null },
+      { address: alice, label: "Alice" },
+    ]);
+  });
+
+  it("connect suggests the code's http(s) seller origins that SATCHEL_PAY_ORIGINS does not list yet", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://known.test" });
+    const { code } = await createVault({ sellers: ["https://seller.test/shop", "https://known.test/x", "ftp://files.test/"] });
+    const out = json(await handlers(fakeNetwork(provider).fetchFn).connect(code));
+    expect(out.sellerOrigins).toEqual(["https://seller.test", "https://known.test"]);
+    expect(out.addToPayOrigins).toEqual(["https://seller.test"]);
+  });
+
+  it("catalog lists Satchel's tools and reports a seller with invalid JSON or one that is down", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://broken.test,https://down.test" });
+    const { code } = await createVault();
+    const base = fakeNetwork(provider).fetchFn;
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "https://broken.test/.well-known/satchel.json") return new Response("<html>not json", { status: 200 });
+      if (url === "https://down.test/.well-known/satchel.json") throw new TypeError("fetch failed");
+      return base(input, init);
+    }) as typeof fetch;
+    const h = handlers(fetchFn);
+    await h.connect(code);
+    const r = await h.catalog();
+    expect(r.isError).toBeFalsy();
+    const out = json(r);
+    expect(out.tools[0]).toMatchObject({ name: "crypto-price", allowed: true });
+    expect(out.sellers).toHaveLength(2);
+    for (const [i, origin] of ["https://broken.test", "https://down.test"].entries()) {
+      expect(out.sellers[i]).toMatchObject({ origin, ok: false, error: expect.any(String) });
+      expect(out.sellers[i].tools).toBeUndefined();
+    }
+  });
+
+  it("catalog lists a seller's tools; allowed only for payees in the vault allowlist", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://seller.test" });
+    const { code } = await createVault({ allowlist: [provider3.address, alice] });
+    const base = fakeNetwork(provider).fetchFn;
+    const tool = (name: string, payTo: string) => ({ name, title: name, description: "d", price: "700", params: {}, payTo, endpoint: `https://seller.test/api/${name}` });
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === "https://seller.test/.well-known/satchel.json") {
+        return Response.json({ name: "Seller", network: "mainnet", tools: [tool("weather", alice), tool("news", stranger.address)] });
+      }
+      return base(input, init);
+    }) as typeof fetch;
+    const h = handlers(fetchFn);
+    await h.connect(code);
+    const out = json(await h.catalog());
+    expect(out.sellers[0]).toMatchObject({ origin: "https://seller.test", ok: true });
+    expect(out.sellers[0].tools).toEqual([
+      expect.objectContaining({ name: "weather", endpoint: "https://seller.test/api/weather", price: "700", allowed: true }),
+      expect.objectContaining({ name: "news", allowed: false }),
+    ]);
   });
 });

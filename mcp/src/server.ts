@@ -32,7 +32,7 @@ export function createSatchelServer(handlers: ReturnType<typeof createHandlers>)
     "satchel_status",
     {
       title: "Satchel budget",
-      description: "Shows the connected vault's balance, how much of this period's cap is spent and remaining, when the budget resets, and which payees are allowed.",
+      description: "Shows the connected vault's balance, how much of this period's cap is spent and remaining, when the budget resets, and which payees are allowed (with the labels the user gave them).",
     },
     () => handlers.status(),
   );
@@ -41,7 +41,8 @@ export function createSatchelServer(handlers: ReturnType<typeof createHandlers>)
     "satchel_catalog",
     {
       title: "Satchel paid tools",
-      description: "Lists the paid APIs on Satchel (price per call, endpoint, and whether this vault may pay them). Call them with satchel_pay_fetch.",
+      description:
+        "Lists the paid APIs on Satchel and on the sellers the user allowed in SATCHEL_PAY_ORIGINS (price per call, endpoint, and whether this vault may pay them). Call them with satchel_pay_fetch.",
     },
     () => handlers.catalog(),
   );
@@ -59,6 +60,21 @@ export function createSatchelServer(handlers: ReturnType<typeof createHandlers>)
       },
     },
     ({ url, method, body }) => handlers.payFetch({ url, method, body }),
+  );
+
+  server.registerTool(
+    "satchel_send",
+    {
+      title: "Send BCH to a payee",
+      description:
+        "Pays BCH directly from the vault to one of its allowlisted payees (see satchel_status). The vault's covenant caps spending per period and refuses any other recipient. Only pay when the user asked for it or it is clearly part of the task they gave you.",
+      inputSchema: {
+        to: z.string().describe("The payee's CashAddr, one of the payees from satchel_status"),
+        amountSats: z.number().int().min(546).describe("Amount in satoshis (at least 546, at most SATCHEL_MAX_SEND_SATS)"),
+        memo: z.string().optional().describe("Optional note written on chain, at most 100 UTF-8 bytes"),
+      },
+    },
+    ({ to, amountSats, memo }) => handlers.send({ to, amountSats, memo }),
   );
 
   return server;

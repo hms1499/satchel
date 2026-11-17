@@ -10,6 +10,8 @@ export interface McpConfig {
   satchelUrl: string;
   home: string;
   maxPriceSats: bigint;
+  /** Largest single satchel_send payment (SATCHEL_MAX_SEND_SATS). */
+  maxSendSats: bigint;
   /** Origins satchel_pay_fetch may pay: Satchel's own, plus SATCHEL_PAY_ORIGINS (comma-separated). */
   payOrigins: string[];
   agentKeyHex?: string;
@@ -20,6 +22,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (network !== "mainnet" && network !== "chipnet") throw new Error(`SATCHEL_NETWORK must be "mainnet" or "chipnet", got "${network}"`);
   const maxPrice = env.SATCHEL_MAX_PRICE_SATS || "5000";
   if (!/^\d+$/.test(maxPrice)) throw new Error(`SATCHEL_MAX_PRICE_SATS must be a whole number of sats, got "${maxPrice}"`);
+  const maxSend = env.SATCHEL_MAX_SEND_SATS || "10000";
+  if (!/^\d+$/.test(maxSend)) throw new Error(`SATCHEL_MAX_SEND_SATS must be a whole number of sats, got "${maxSend}"`);
   const satchelUrl = (env.SATCHEL_URL || DEFAULT_SATCHEL_URL).replace(/\/+$/, "");
   const extraOrigins = (env.SATCHEL_PAY_ORIGINS ?? "").split(",").map((o) => o.trim()).filter(Boolean);
   let payOrigins: string[];
@@ -33,6 +37,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     satchelUrl,
     home: env.SATCHEL_HOME || join(homedir(), ".satchel"),
     maxPriceSats: BigInt(maxPrice),
+    maxSendSats: BigInt(maxSend),
     payOrigins,
     ...(env.SATCHEL_AGENT_KEY ? { agentKeyHex: env.SATCHEL_AGENT_KEY } : {}),
   };

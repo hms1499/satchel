@@ -22,10 +22,10 @@ async function connectedClient() {
 }
 
 describe("satchel-pay-mcp server", () => {
-  it("lists exactly the five Satchel tools, each with a description", async () => {
+  it("lists exactly the six Satchel tools, each with a description", async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual(["satchel_catalog", "satchel_connect", "satchel_pay_fetch", "satchel_setup", "satchel_status"]);
+    expect(tools.map((t) => t.name).sort()).toEqual(["satchel_catalog", "satchel_connect", "satchel_pay_fetch", "satchel_send", "satchel_setup", "satchel_status"]);
     for (const t of tools) expect(t.description?.length).toBeGreaterThan(20);
     expect(tools.find((t) => t.name === "satchel_pay_fetch")?.description).toMatch(/real BCH/);
   });
@@ -34,6 +34,14 @@ describe("satchel-pay-mcp server", () => {
     const client = await connectedClient();
     const r = (await client.callTool({ name: "satchel_setup", arguments: {} })) as { content: { text: string }[] };
     expect(JSON.parse(r.content[0].text).agentPk).toMatch(/^0[23][0-9a-f]{64}$/);
+  });
+
+  it("satchel_send says it pays only allowlisted payees within the cap, and rejects a dust amount", async () => {
+    const client = await connectedClient();
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === "satchel_send")?.description).toMatch(/allowlisted payees/);
+    const r = (await client.callTool({ name: "satchel_send", arguments: { to: "bitcoincash:qq", amountSats: 545 } })) as { isError?: boolean };
+    expect(r.isError).toBe(true);
   });
 
   it("validates tool input (satchel_pay_fetch needs a url)", async () => {

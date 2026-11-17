@@ -3,15 +3,28 @@
 **Give your agent a budget, not your keys** — in any MCP client.
 
 `satchel-pay-mcp` lets your own AI agent (Claude Desktop/Code, Cursor, VS Code, Windsurf, Codex CLI, Gemini CLI, …) pay
-for APIs that charge per call, from a [Satchel](https://github.com/hms1499/satchel) vault on Bitcoin Cash.
+for APIs that charge per call, and send BCH to the payees you chose, from a
+[Satchel](https://github.com/hms1499/satchel) vault on Bitcoin Cash.
 
 - **The limit is enforced by consensus.** The vault is a BCH covenant: the agent can spend at most *X* sats per period
   (miner fees included) and only to allowlisted payees. Every node rejects anything else — even if this server, your
   machine or the agent is compromised.
 - **The agent key never leaves your machine.** It is generated locally (`~/.satchel/agent.json`, mode 0600). Satchel's
   servers never see it. Your own wallet keeps the owner key and can withdraw everything at any time.
-- **Extra guards in the server:** it pays only payees in the vault's allowlist and never more than
-  `SATCHEL_MAX_PRICE_SATS` per call, one payment at a time.
+- **Extra guards in the server:** it pays only payees in the vault's allowlist, never more than
+  `SATCHEL_MAX_PRICE_SATS` per API call or `SATCHEL_MAX_SEND_SATS` per direct send, and only APIs on origins you allowed,
+  one payment at a time.
+
+## What v0.1.0 can pay
+
+- **Satchel's own paid tools** (listed by `satchel_catalog`).
+- **Sellers that use `satchel-pay-server`** (the seller kit in the Satchel repo), once you add their origin to `SATCHEL_PAY_ORIGINS` and
+  their address to the vault's allowlist.
+- **Direct sends** (`satchel_send`) to any payee in the vault's allowlist, e.g. a person or a service you pay by hand.
+
+Not yet: sellers that only speak x402-bch `exact`. Its reference verifier rejects Satchel payments on two policy rules
+(the vault's state NFT commitment changes on every payment, and the locktime is non-zero), so a covenant wallet cannot
+pass it today. That is on the roadmap, with an upstream proposal.
 
 ## Install
 
@@ -59,7 +72,9 @@ ChatGPT only accepts remote MCP servers, so it is not supported (the agent key w
 1. Ask your agent to **set up Satchel**. It calls `satchel_setup` and gives you a link.
 2. Open the link, connect your wallet (WizardConnect, e.g. Cashonize), choose a deposit, a cap per period and the payees,
    and sign. Nothing moves until you sign.
-3. Copy the **connect code** the page shows and paste it into the chat. The agent calls `satchel_connect`.
+3. Copy the **connect code** the page shows and paste it into the chat. The agent calls `satchel_connect`. If you picked
+   sellers in the form, it answers with `addToPayOrigins`: add those origins to `SATCHEL_PAY_ORIGINS` and restart the
+   server to buy from them.
 4. Ask for something that needs a paid API ("What is the BCH price right now?"). The agent pays and shows the txid.
 5. Withdraw any time from the Satchel page with your wallet.
 
@@ -69,9 +84,25 @@ ChatGPT only accepts remote MCP servers, so it is not supported (the agent key w
 |---|---|
 | `satchel_setup` | Creates the local agent key if needed; returns its public key and the vault-creation link |
 | `satchel_connect` | Connects the vault from its connect code (`satchel1:…`); one vault per network |
-| `satchel_status` | Balance, spent this period, remaining, when the budget resets, allowed payees |
-| `satchel_catalog` | Satchel's paid APIs: endpoint, price, whether this vault may pay them |
+| `satchel_status` | Balance, spent this period, remaining, when the budget resets, allowed payees with their labels |
+| `satchel_catalog` | Paid APIs on Satchel and on each seller in `SATCHEL_PAY_ORIGINS`: endpoint, price, whether this vault may pay them; a seller that is down is reported, not fatal |
 | `satchel_pay_fetch` | Calls an endpoint; on HTTP 402 pays from the vault and retries; returns the result and the txid |
+| `satchel_send` | Sends BCH from the vault to an allowlisted payee, with an optional memo (≤ 100 UTF-8 bytes) on chain; returns the txid and the budget left |
+
+## Custom payees
+
+When you create the vault you can add your own payees (a label and a CashAddr) next to Satchel's tools, up to 8 payees in
+total. They are stored in their canonical form, so a token-aware `z…` address and its `q…` form are the same payee.
+Labels live in the connect code, not on chain: `satchel_status` shows them, and `satchel_send` returns the label of the
+payee it paid. The covenant enforces the allowlist itself, so `satchel_send` cannot pay anyone else, and the server
+refuses before signing:
+
+1. an address that is not valid on this network (a `bchtest:` address on mainnet, for example);
+2. an address outside the vault's allowlist;
+3. an amount below 546 sats or above `SATCHEL_MAX_SEND_SATS`;
+4. a memo over 100 UTF-8 bytes (emoji and accented letters take more than one byte).
+
+The memo is written as an `OP_RETURN` output `"SATM" ‖ utf8(memo)`, so anyone can read it on chain.
 
 ## Configuration
 
@@ -80,7 +111,9 @@ ChatGPT only accepts remote MCP servers, so it is not supported (the agent key w
 | `SATCHEL_NETWORK` | `mainnet` | `mainnet` or `chipnet` |
 | `SATCHEL_URL` | the Satchel web app | where vaults are created and the catalog lives |
 | `SATCHEL_HOME` | `~/.satchel` | key and connected-vault files |
-| `SATCHEL_MAX_PRICE_SATS` | `5000` | the most this server pays for one call |
+| `SATCHEL_MAX_PRICE_SATS` | `5000` | the most this server pays for one API call |
+| `SATCHEL_MAX_SEND_SATS` | `10000` | the most one `satchel_send` pays |
+| `SATCHEL_PAY_ORIGINS` | — | comma-separated seller origins (e.g. `https://seller.example`) that `satchel_pay_fetch` may pay and `satchel_catalog` lists, in addition to `SATCHEL_URL`. Only this variable widens them: neither Satchel's server nor a connect code can |
 | `SATCHEL_AGENT_KEY` | — | a 64-hex private key to use instead of the key file (CI) |
 
 ## The payment protocol (bch-sc402)
@@ -92,10 +125,14 @@ ChatGPT only accepts remote MCP servers, so it is not supported (the agent key w
 4. The provider checks its signature on the challenge, that the challenge is for this exact request, and that the
    transaction pays it (0-conf), then answers. Repeating the same paid request returns the same answer (idempotent).
 
-Any HTTP service can accept bch-sc402 payments; add its address to your vault's allowlist when you create the vault.
+Any HTTP service can accept bch-sc402 payments; add its address to your vault's allowlist when you create the vault,
+and its origin to `SATCHEL_PAY_ORIGINS`.
 
 ## Security notes
 
 - Payments are capped by the covenant per period, so the most a compromised agent can lose is the remaining budget,
   and only to the payees you allowed.
+- Sellers accept payments at 0-conf: the paying transaction is checked when it reaches the mempool, before it is
+  confirmed. That is fine for the small per-call prices this is built for; do not treat it as final settlement for large
+  amounts.
 - This is hackathon software (BCH BLAZE 2026). Use small amounts.
