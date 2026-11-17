@@ -59,8 +59,8 @@ app.get("/.well-known/satchel.json", () => wellKnownResponse({ name: "Price sell
 1. The client calls the endpoint and gets `402 { error, accepts: [{ scheme: "bch-sc402", resource, payTo, amount, nonce, expires, network, request, sig }] }`.
    `amount` is in sats (decimal string), `request` is the SHA-256 of the tool name and its sorted parameters, and `sig`
    is an HMAC-SHA256 of the other fields under your secret. A challenge is valid for 10 minutes.
-2. The client pays at least `amount` sats to `payTo` in a transaction that also has an OP_RETURN output with
-   `"SC402" || nonce`.
+2. The client pays at least `amount` sats to `payTo` in a transaction whose only OP_RETURN output is exactly
+   `OP_RETURN <push of "SC402" || nonce>` (hex `6a15` + `5343343032` + nonce). One transaction pays for one challenge.
 3. The client retries the identical request with `X-Payment: base64(JSON { challenge, txid })`.
 4. The server checks the signature, the resource, the request binding and the expiry, then fetches the transaction and
    checks the payment output and the memo. No state is shared between instances: a paid header only ever buys the
@@ -75,7 +75,7 @@ for small amounts; do not sell anything per call that you could not afford to gi
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `SELLER_SECRET` | yes | At least 32 characters of randomness. Signs the challenges. Keep it server-side; rotating it invalidates open challenges. |
+| `SELLER_SECRET` | yes | At least 32 characters of randomness (`createPaywall` throws otherwise). Signs the challenges. Keep it server-side; rotating it invalidates open challenges. |
 | `SELLER_PAYTO` | yes | Your CashAddr (`bitcoincash:…` on mainnet, `bchtest:…` on chipnet). Payments go straight to it. |
 
 `createPaywall` options: `network` (`"mainnet"` or `"chipnet"`), `secret`, `getTransaction` (txid → raw tx hex; default:

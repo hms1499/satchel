@@ -80,6 +80,10 @@ function decodeHeader(header: string): { challenge?: Challenge; txid?: string } 
  * the `X-Payment` header and the paying transaction, and runs the route's handler once per payment.
  */
 export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route: PaidRoute): Promise<Response> } {
+  // A missing or short secret would let anyone sign their own challenges (and set payTo to themselves).
+  if (typeof cfg.secret !== "string" || cfg.secret.length < 32) {
+    throw new Error("satchel-pay-server: secret must be a string of at least 32 characters (set SELLER_SECRET)");
+  }
   const getTransaction = cfg.getTransaction ?? electrumTransactionFetcher(cfg.network);
   const cache = cfg.cache ?? new ResultCache<unknown>();
   const now = cfg.now ?? Date.now;

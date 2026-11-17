@@ -165,6 +165,15 @@ describe("createPaywall().handle", () => {
   });
 });
 
+describe("createPaywall secret", () => {
+  it("refuses a missing or short secret", () => {
+    expect(() => createPaywall({ network: "chipnet", secret: undefined as unknown as string, getTransaction: async () => "" })).toThrow(/at least 32 characters/);
+    expect(() => createPaywall({ network: "chipnet", secret: "", getTransaction: async () => "" })).toThrow(/at least 32 characters/);
+    expect(() => createPaywall({ network: "chipnet", secret: "x".repeat(31), getTransaction: async () => "" })).toThrow(/at least 32 characters/);
+    expect(() => createPaywall({ network: "chipnet", secret: "x".repeat(32), getTransaction: async () => "" })).not.toThrow();
+  });
+});
+
 describe("createPaywall defaults", () => {
   it("fetches transactions from Electrum for its network when no getTransaction is given", () => {
     createPaywall({ network: "mainnet", secret: SECRET });
