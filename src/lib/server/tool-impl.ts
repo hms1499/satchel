@@ -1,8 +1,10 @@
 import { generateText } from "ai";
 import { PAID_TOOLS, type ToolName } from "../tools";
 import { AGENT_MODEL, hasLlm } from "./llm";
+import { InputError as ToolInputError } from "../../../provider-kit/src/index";
 
-export class ToolInputError extends Error {}
+/** Bad input: answered 400 by the paywall, before payment from `validateToolInput`, after it from `runTool`. */
+export { ToolInputError };
 
 async function cryptoPrice(params: URLSearchParams) {
   const id = (params.get("id") ?? "bitcoin-cash").toLowerCase();
@@ -101,7 +103,7 @@ const COIN_ID = /^[a-z0-9-]{2,60}$/;
  * Checks a request before any payment is asked for, so a caller never pays for a call that can only fail:
  * unknown parameter names (an agent guessing names), missing or invalid required values.
  */
-export function validateToolInput(name: ToolName, params: URLSearchParams): void {
+export async function validateToolInput(name: ToolName, params: URLSearchParams): Promise<void> {
   const expected = Object.keys(PAID_TOOLS[name].params);
   for (const key of params.keys()) {
     if (!expected.includes(key)) throw new ToolInputError(`unknown parameter "${key}"; expected: ${expected.join(", ")}`);

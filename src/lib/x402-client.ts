@@ -1,27 +1,12 @@
-import { binToHex } from "@bitauth/libauth";
+import { SCHEME, type Challenge } from "../../provider-kit/src/protocol";
 
 /**
  * Client side of Satchel's pay-per-call protocol (bch-sc402), shared by the hosted agent and satchel-pay-mcp.
- * No secrets here: challenge signing and payment verification live on the provider (server/x402.ts).
+ * No secrets here: challenge signing and payment verification live on the seller (satchel-pay-server, `provider-kit/`).
+ * The wire format (scheme, memo, challenge fields) has one definition: `provider-kit/src/protocol.ts`.
  */
 
-export const MEMO_PREFIX_HEX = binToHex(new TextEncoder().encode("SC402"));
-export const SCHEME = "bch-sc402";
-
-export interface Challenge {
-  resource: string;
-  payTo: string;
-  amount: string; // sats, decimal string
-  nonce: string; // 16 bytes hex
-  expires: number; // unix ms
-  request: string; // sha256 hex of the canonical request (see requestDigest)
-  network: string;
-  sig: string;
-}
-
-export function memoForChallenge(c: Pick<Challenge, "nonce">): string {
-  return MEMO_PREFIX_HEX + c.nonce;
-}
+export { SCHEME, MEMO_PREFIX_HEX, memoForChallenge, type Challenge } from "../../provider-kit/src/protocol";
 
 export function encodePaymentHeader(challenge: Challenge, txid: string): string {
   return Buffer.from(JSON.stringify({ challenge, txid })).toString("base64");

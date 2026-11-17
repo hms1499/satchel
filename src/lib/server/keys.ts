@@ -53,6 +53,7 @@ export function attackerAddress(): string {
   return keyInfo(derivePrivateKey("public-attacker-demo-key-not-secret!!", "attacker")).address;
 }
 
-export function hmac(data: string): string {
-  return createHmac("sha256", secret("PROVIDER_SEED")).update(data).digest("hex");
+/** The validated provider secret (>= 32 chars). Signs the pay-per-call challenges (satchel-pay-server `secret`). */
+export function providerSeed(): string {
+  return secret("PROVIDER_SEED");
 }
