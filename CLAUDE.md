@@ -18,6 +18,11 @@ npm run typecheck          # tsc --noEmit
 npm run lint
 npm run build
 npm run compile:contract   # recompile contracts/Satchel.cash -> src/lib/contract/Satchel.artifact.json
+
+cd mcp && npm run typecheck && npm run build                # satchel-pay-mcp (typecheck covers scripts/ too)
+cd provider-kit && npm run typecheck && npm run build       # satchel-pay-server
+cd examples/provider && npm test && npm run typecheck       # example seller; `npm run dev` serves :8787
+npm pack --dry-run                                          # in mcp/ or provider-kit/: check the published files
 ```
 
 After **any** edit to `contracts/Satchel.cash`, run `npm run compile:contract` and then `npm test`. The artifact
@@ -40,7 +45,13 @@ is committed and imported by both the client and the server.
   state encoding and the budget math (`computeNextState`, `remainingBudget`).
 - `src/lib/vault.test.ts`: covenant tests. Each negative test asserts the **specific** failing `require`.
 - `src/lib/server/*`: server only. Agent and provider key derivation (`keys.ts`), Electrum, and the x402 pay-per-call protocol.
-- `src/lib/tools.ts`: the paid tool catalog (prices in sats).
+- `src/lib/tools.ts`: the paid tool catalog (prices in sats). Append-only order: `crypto-price`=0, `web-reader`=1,
+  `deep-analysis`=2, `bch-address`=3, `bch-tx`=4 (`PROVIDER_COUNT = 5`). The chain tools live in `src/lib/server/chain-tools.ts`.
+- `src/lib/payees.ts` (`normalizePayee`: canonical non-token CashAddr, network check), `src/lib/allowlist.ts`
+  (`buildAllowlist`: tools + suggested sellers + custom payees, deduplicated, 1 to 8), `src/lib/server/sellers.ts`
+  (`SATCHEL_SELLERS`).
+- `src/lib/recovery.ts`: the genesis OP_RETURN recovery memo. New vaults write v2 (known payees as indexes, others as
+  hashes, payload ≤ 215 bytes); v1 must still decode. `findVaultsInTransactions` rebuilds vaults from raw txs.
 - `src/lib/config.ts`: network, explorer links, defaults, and banner links (from env).
 - `src/lib/descriptor.ts`: the client-held vault descriptor (params, agentIndex, token). Validated by zod on the server.
 - Pre-deploy hardening spec: `docs/superpowers/specs/2026-11-17-predeploy-hardening.md` (request-bound idempotent x402
@@ -54,8 +65,17 @@ is committed and imported by both the client and the server.
 - `mcp/`: the `satchel-pay-mcp` package (own `package.json`, `npm install` inside it). `src/tools.ts` holds the tool logic,
   `src/server.ts` the MCP tool definitions, `src/index.ts` the stdio entry; `npm run build` bundles to `dist/index.js` with
   esbuild. Import `cashscript`/`@bitauth/libauth` from `mcp/src` only through `src/lib/chain-deps.ts` (one library copy).
-  Its tests run in the root `npm test`; `cd mcp && npx tsc --noEmit -p tsconfig.json` typechecks it. Mainnet e2e:
-  `cd mcp && npm run build && E2E_ALLOW_MAINNET=1 npx tsx scripts/mainnet-e2e.mts`.
+  Its tests run in the root `npm test`; `cd mcp && npx tsc --noEmit -p tsconfig.json` typechecks it. Tools: `satchel_setup`,
+  `_connect`, `_status`, `_catalog` (Satchel's tools + sellers in `SATCHEL_PAY_ORIGINS`), `_pay_fetch`, `_send` (direct
+  payment to an allowlisted payee, memo `"SATM"` ‖ utf8 ≤ 100 bytes, at most `SATCHEL_MAX_SEND_SATS`). E2E (vault with
+  `bch-tx` + seller + custom payee, send, paid calls, cap refusal, recovery, withdraw): `cd mcp && npm run build &&
+  E2E_ALLOW_MAINNET=1 E2E_SELLER_ORIGIN=<seller> npx tsx scripts/mainnet-e2e.mts` (`E2E_NETWORK=chipnet` for chipnet).
+- `provider-kit/`: the `satchel-pay-server` package (seller kit: `createPaywall`, `PaidRoute`, `InputError`,
+  `wellKnownResponse`; own `package.json`, esbuild to `dist/`). Satchel's `/api/tools/*` run on it, and
+  `src/lib/server/x402.ts` re-exports from it. Depends only on libauth and `@electrum-cash/network`, not cashscript.
+- `examples/provider/`: example seller "CashAddr & script decoder" on Hono + the kit (`POST /api/address`,
+  `POST /api/script`, `/.well-known/satchel.json`). Env `SELLER_NETWORK`, `SELLER_SECRET`, `SELLER_PAY_TO`. Installs the
+  kit from `vendor/satchel-pay-server-0.1.0.tgz` (an `npm pack` of `provider-kit/`) until it is on npm.
 - Shared payment code used by both the hosted agent and the MCP server: `src/lib/spend.ts` (`VaultSpender`),
   `src/lib/x402-client.ts`, `src/lib/connect-code.ts`. Vaults with `external: true` (agent index `0xffffffff`) belong
   to a user's own agent: Satchel serves their status but never drives them.
@@ -75,8 +95,11 @@ is committed and imported by both the client and the server.
 
 - Satoshi amounts are `bigint` everywhere (suffix `n`). Never use JS `number` for sats.
 - Default to **chipnet**. Use mainnet only for the final demo, and only with tiny amounts that can be recovered (rule of the hackathon).
-- Secrets (`AGENT_MASTER_SEED`, `PROVIDER_SEED`, `AI_GATEWAY_API_KEY`) are server-only. Never import `src/lib/server/*`
+- Secrets (`AGENT_MASTER_SEED`, `PROVIDER_SEED`, `AI_GATEWAY_API_KEY`, the example seller's `SELLER_SECRET`) are server-only. Never import `src/lib/server/*`
   from client components, and never expose secrets through `NEXT_PUBLIC_*`. See `.env.example`.
+- Server env beyond the secrets: `AGENT_MODE` (`scripted`|`llm`, the hosted agent), `TOOL_LLM` (`on` = live
+  `deep-analysis`) and `TOOL_MODEL`, `SATCHEL_SELLERS` (JSON array of suggested sellers; malformed fails `/api/config`).
+  MCP env: `SATCHEL_NETWORK`, `SATCHEL_URL`, `SATCHEL_PAY_ORIGINS`, `SATCHEL_MAX_PRICE_SATS`, `SATCHEL_MAX_SEND_SATS`.
 - The server is stateless (no DB). The vault descriptor lives client-side (localStorage), and agent keys are re-derived from the seed.
 - UI copy is in English (international judges). Keep the flow obvious; a judge spends about 2 minutes per project.
 
