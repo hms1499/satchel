@@ -26,13 +26,23 @@ export function SatchelApp() {
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [closed, setClosed] = useState<{ txid: string; amount: bigint } | null>(null);
   const [owned, setOwned] = useState<{ descriptor: VaultDescriptor; balance: bigint }[]>([]);
+  // `?agent=<pubkey>`: create the vault for the user's own agent (satchel-pay-mcp) instead of Satchel's hosted agent.
+  const [externalAgentPk, setExternalAgentPk] = useState<string | null>(null);
+  const [agentParamError, setAgentParamError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchConfig().then(setConfig).catch(() => setConfig(null));
+    const agentParam = new URLSearchParams(window.location.search).get("agent");
+    if (agentParam !== null) {
+      // Reading the URL after mount (window is unavailable during SSR).
+      if (/^0[23][0-9a-f]{64}$/.test(agentParam)) setExternalAgentPk(agentParam); // eslint-disable-line react-hooks/set-state-in-effect
+      else setAgentParamError("The agent key in this link is not a valid public key, so this vault would use Satchel's hosted agent instead. Run satchel_setup in your agent again to get a fresh link.");
+      setView("app");
+    }
     const stored = loadDescriptor();
     // Restoring persisted client state after mount (localStorage is unavailable during SSR).
     if (stored && stored.network === NETWORK) {
-      setDescriptor(stored); // eslint-disable-line react-hooks/set-state-in-effect
+      setDescriptor(stored);
       setView("app");
     }
   }, []);
@@ -99,7 +109,7 @@ export function SatchelApp() {
     setCreateError(null);
     setBusyStep("Starting…");
     try {
-      const d = await createVault(wc.manager, input, knownPayees ?? [], setBusyStep);
+      const d = await createVault(wc.manager, input, knownPayees ?? [], setBusyStep, externalAgentPk ?? undefined);
       saveDescriptor(d);
       setDescriptor(d);
       setClosed(null);
@@ -172,6 +182,11 @@ export function SatchelApp() {
       </header>
 
       <main className="mx-auto max-w-[1240px] px-4 pb-16 sm:px-6">
+        {view === "app" && agentParamError && (
+          <p role="alert" className="mt-4 rounded-[10px] bg-warn-soft px-3.5 py-2.5 text-sm text-warn-ink">
+            {agentParamError}
+          </p>
+        )}
         {view === "landing" && <Landing onLaunch={launch} />}
 
         {view === "app" && closed && !descriptor && (
@@ -197,6 +212,15 @@ export function SatchelApp() {
             <Card className="flex w-full max-w-[560px] flex-col gap-4 p-8">
               <span className="text-[13px] font-semibold text-brand">Step 1 of 3</span>
               <h2 className="font-display text-[32px] font-bold tracking-tight">Connect your wallet</h2>
+              {externalAgentPk && (
+                <p className="rounded-[10px] border border-brand bg-brand-soft px-3.5 py-2.5 text-sm text-[#1f3b30]">
+                  You are creating a vault for your own agent (MCP):{" "}
+                  <span className="font-mono">
+                    {externalAgentPk.slice(0, 10)}…{externalAgentPk.slice(-6)}
+                  </span>
+                  .
+                </p>
+              )}
               <p className="text-body">
                 Your wallet becomes the vault owner. Satchel never sees your keys: every transaction you make is signed in
                 your wallet.
@@ -245,7 +269,15 @@ export function SatchelApp() {
         )}
 
         {view === "app" && !closed && !descriptor && connected && config && (
-          <CreateVault tools={config.tools} feePerCall={config.feePerCall} walletBalance={walletBalance} busyStep={busyStep} error={createError} onCreate={onCreate} />
+          <CreateVault
+            tools={config.tools}
+            feePerCall={config.feePerCall}
+            walletBalance={walletBalance}
+            externalAgentPk={externalAgentPk}
+            busyStep={busyStep}
+            error={createError}
+            onCreate={onCreate}
+          />
         )}
 
         {view === "app" && descriptor && config && (

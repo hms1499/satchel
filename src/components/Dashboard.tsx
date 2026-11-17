@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { txUrl } from "@/lib/config";
 import type { VaultDescriptor } from "@/lib/descriptor";
+import { encodeConnectCode } from "@/lib/connect-code";
 import {
   fetchStatus,
   fmtSats,
@@ -221,7 +222,9 @@ export function Dashboard({
       </div>
 
       <div className="flex min-w-0 flex-[999_1_560px] flex-col gap-5">
-        {agentLocked ? (
+        {descriptor.external ? (
+          <ConnectAgentCard descriptor={descriptor} />
+        ) : agentLocked ? (
           <Card className="flex flex-col gap-3">
             <CardTitle>Recovered from the blockchain</CardTitle>
             <p className="text-sm text-body">
@@ -305,6 +308,40 @@ export function Dashboard({
         </Card>
       </div>
     </section>
+  );
+}
+
+/** For a vault whose agent is the user's own (satchel-pay-mcp): the code the agent needs to use this vault. */
+function ConnectAgentCard({ descriptor }: { descriptor: VaultDescriptor }) {
+  const code = encodeConnectCode({ v: 1, network: descriptor.network, params: descriptor.params, genesisTxid: descriptor.genesisTxid });
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <Card className="flex flex-col gap-3">
+      <CardTitle>Connect your agent</CardTitle>
+      <p className="text-sm text-body">
+        This vault&apos;s agent runs in your own MCP client, and its key never leaves your machine. Paste this code into
+        your agent&apos;s chat; it calls <span className="font-mono">satchel_connect</span>. The code holds no secret.
+      </p>
+      <textarea
+        readOnly
+        value={code}
+        aria-label="Connect code"
+        className="min-h-24 break-all rounded-[10px] border border-line-strong bg-tint p-3 font-mono text-xs"
+        onFocus={(e) => e.currentTarget.select()}
+      />
+      <Button variant="secondary" className="self-start" onClick={copy}>
+        {copied ? "Copied" : "Copy connect code"}
+      </Button>
+    </Card>
   );
 }
 

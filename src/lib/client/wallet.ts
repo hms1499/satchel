@@ -5,7 +5,7 @@ import { binToHex, publicKeyToP2pkhCashAddress } from "@bitauth/libauth";
 import type { DappConnectionManager } from "@wizardconnect/dapp";
 import { NETWORK } from "../config";
 import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, lockingBytecodeOf, type VaultParams } from "../vault";
-import { paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
+import { EXTERNAL_AGENT_INDEX, paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
 import { descriptorFromRecovered, encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
 import { toRelaySignRequest } from "../wc-relay";
 import { broadcast, getBlockHeight, getHistory, getTransactions, getUtxosFor, httpProvider } from "./chain";
@@ -113,11 +113,18 @@ export async function createVault(
   input: CreateVaultInput,
   knownPayees: string[],
   onStep: (text: string) => void,
+  externalAgentPk?: string,
 ): Promise<VaultDescriptor> {
-  onStep("Registering a fresh agent key…");
-  const reg = await fetch("/api/agent/register", { method: "POST" });
-  if (!reg.ok) throw new Error("Could not register an agent");
-  const agent = (await reg.json()) as { agentIndex: number; agentPk: string; token: string };
+  // The user's own agent (e.g. satchel-pay-mcp) holds its key; otherwise Satchel registers a hosted agent.
+  let agent: { agentIndex: number; agentPk: string; token: string };
+  if (externalAgentPk) {
+    agent = { agentIndex: EXTERNAL_AGENT_INDEX, agentPk: externalAgentPk, token: "" };
+  } else {
+    onStep("Registering a fresh agent key…");
+    const reg = await fetch("/api/agent/register", { method: "POST" });
+    if (!reg.ok) throw new Error("Could not register an agent");
+    agent = (await reg.json()) as { agentIndex: number; agentPk: string; token: string };
+  }
 
   const owner = ownerAccount(manager);
   const params: VaultParams = { ownerPk: owner.pubHex, agentPk: agent.agentPk, ...input };
@@ -171,6 +178,7 @@ export async function createVault(
     params: paramsToDescriptorParams(params),
     createdAt: Date.now(),
     genesisTxid: txid,
+    ...(externalAgentPk && { external: true }),
   };
 }
 

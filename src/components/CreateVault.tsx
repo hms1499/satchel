@@ -16,6 +16,7 @@ export function CreateVault({
   tools,
   feePerCall,
   walletBalance,
+  externalAgentPk,
   busyStep,
   error,
   onCreate,
@@ -23,6 +24,7 @@ export function CreateVault({
   tools: ToolInfo[];
   feePerCall: string;
   walletBalance: bigint | null;
+  externalAgentPk: string | null;
   busyStep: string | null;
   error: string | null;
   onCreate: (input: CreateVaultInput) => void;
@@ -56,6 +58,15 @@ export function CreateVault({
         <div className="flex flex-col gap-1.5">
           <span className="text-[13px] font-semibold text-brand">Step 2 of 3</span>
           <h2 className="font-display text-[32px] font-bold tracking-tight">Create a vault for your agent</h2>
+          {externalAgentPk && (
+            <div className="rounded-[10px] border border-brand bg-brand-soft px-3.5 py-2.5 text-sm text-[#1f3b30]">
+              Creating a vault for your own agent (MCP):{" "}
+              <span className="font-mono">
+                {externalAgentPk.slice(0, 10)}…{externalAgentPk.slice(-6)}
+              </span>
+              . Satchel never sees its private key.
+            </div>
+          )}
           {walletBalance !== null && (
             <span className="text-sm text-muted">Wallet balance: {fmtSats(walletBalance)} sats</span>
           )}
