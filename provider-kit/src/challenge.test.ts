@@ -1,7 +1,7 @@
 import { createHash, createHmac } from "node:crypto";
 import { describe, it, expect, beforeAll } from "vitest";
-import { checkChallenge, createChallenge, requestDigest, signChallengeBody } from "./challenge.js";
-import type { Challenge } from "./protocol.js";
+import { checkChallenge, createChallenge, requestDigest, signChallengeBody } from "./challenge";
+import type { Challenge } from "./protocol";
 
 const SECRET = "test-provider-seed-0123456789abcdef0123456789";
 const RESOURCE = "/api/tools/crypto-price";

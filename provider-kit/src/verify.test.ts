@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin, utf8ToBin } from "@bitauth/libauth";
-import { createChallenge } from "./challenge.js";
-import { MEMO_PREFIX_HEX, memoForChallenge } from "./protocol.js";
-import { verifyPaymentTx } from "./verify.js";
+import { createChallenge } from "./challenge";
+import { MEMO_PREFIX_HEX, memoForChallenge } from "./protocol";
+import { verifyPaymentTx } from "./verify";
 
 const PAY_TO = "bchtest:qzhw4v5cag3h98392ktmmaean9wysfmdvuc0drgy7h";
 

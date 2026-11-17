@@ -1,5 +1,5 @@
 import type { ElectrumClient, ElectrumClientEvents } from "@electrum-cash/network";
-import type { BchNetwork } from "./protocol.js";
+import type { BchNetwork } from "./protocol";
 
 /** The same default servers as CashScript's ElectrumNetworkProvider. */
 const DEFAULT_HOSTS: Record<BchNetwork, string> = {

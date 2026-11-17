@@ -1,5 +1,5 @@
 import { binToHex, hmacSha256, sha256, utf8ToBin } from "@bitauth/libauth";
-import type { BchNetwork, Challenge } from "./protocol.js";
+import type { BchNetwork, Challenge } from "./protocol";
 
 /**
  * Each challenge is bound to one request (`request` = digest of the tool and its parameters). Within its expiry a paid

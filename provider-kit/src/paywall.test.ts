@@ -1,11 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin } from "@bitauth/libauth";
-import { createPaywall, InputError, wellKnownResponse, type PaidRoute } from "./paywall.js";
-import { memoForChallenge, type Challenge } from "./protocol.js";
-import { electrumTransactionFetcher } from "./electrum.js";
+import { createPaywall, InputError, wellKnownResponse, type PaidRoute } from "./paywall";
+import { memoForChallenge, type Challenge } from "./protocol";
+import { electrumTransactionFetcher } from "./electrum";
 
 // No network in unit tests: the default fetcher is only checked for being wired to the paywall's network.
-vi.mock("./electrum.js", () => ({ electrumTransactionFetcher: vi.fn(() => async () => Promise.reject(new Error("offline"))) }));
+vi.mock("./electrum", () => ({ electrumTransactionFetcher: vi.fn(() => async () => Promise.reject(new Error("offline"))) }));
 
 const SECRET = "paywall-test-secret-0123456789abcdef0123456789";
 const PAY_TO = "bchtest:qzhw4v5cag3h98392ktmmaean9wysfmdvuc0drgy7h";

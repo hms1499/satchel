@@ -1,6 +1,6 @@
 // Bundles the seller kit into one ESM file (dependencies stay external), then emits the type declarations.
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { build } from "esbuild";
 
 rmSync("dist", { recursive: true, force: true });
@@ -27,3 +27,12 @@ execFileSync(
   ],
   { stdio: "inherit" },
 );
+
+// Sources use extensionless relative imports (bundlers such as Turbopack do not map "./x.js" to x.ts), but node16 and
+// nodenext consumers need "./x.js" in the declarations to resolve them.
+for (const file of readdirSync("dist").filter((f) => f.endsWith(".d.ts"))) {
+  const path = `dist/${file}`;
+  const src = readFileSync(path, "utf8");
+  const out = src.replace(/((?:from|import)\s*\(?\s*)(["'])(\.\.?\/[^"']+?)(?<!\.js)\2/g, "$1$2$3.js$2");
+  if (out !== src) writeFileSync(path, out);
+}

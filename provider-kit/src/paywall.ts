@@ -1,9 +1,9 @@
 import { base64ToBin, binToUtf8, isBase64 } from "@bitauth/libauth";
-import { ResultCache } from "./cache.js";
-import { checkChallenge, createChallenge, requestDigest } from "./challenge.js";
-import { electrumTransactionFetcher } from "./electrum.js";
-import { SCHEME, type BchNetwork, type Challenge } from "./protocol.js";
-import { verifyPaymentTx } from "./verify.js";
+import { ResultCache } from "./cache";
+import { checkChallenge, createChallenge, requestDigest } from "./challenge";
+import { electrumTransactionFetcher } from "./electrum";
+import { SCHEME, type BchNetwork, type Challenge } from "./protocol";
+import { verifyPaymentTx } from "./verify";
 
 /** Bad input from the caller. Thrown from `validate` (before any 402) or from `handler` (after payment). */
 export class InputError extends Error {

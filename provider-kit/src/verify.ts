@@ -1,5 +1,5 @@
 import { binToHex, cashAddressToLockingBytecode, decodeTransaction, hexToBin } from "@bitauth/libauth";
-import { memoForChallenge, type Challenge } from "./protocol.js";
+import { memoForChallenge, type Challenge } from "./protocol";
 
 /**
  * Checks that a raw transaction pays a challenge: an output pays `payTo` at least `amount` sats, and its only OP_RETURN
