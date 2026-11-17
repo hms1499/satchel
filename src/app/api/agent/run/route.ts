@@ -1,6 +1,6 @@
 import { AgentAuthError, openDescriptor } from "@/lib/server/agent-wallet";
 import { runAgent } from "@/lib/server/agent-runner";
-import { hasLlm } from "@/lib/server/llm";
+import { agentUsesLlm } from "@/lib/server/llm";
 import { logEvent } from "@/lib/server/log";
 import type { AgentEvent } from "@/lib/server/paid-client";
 
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       } catch (e) {
         emit({ type: "error", text: e instanceof Error ? e.message : "agent failed" });
       } finally {
-        logEvent("agent_run", { vault: opened.contract.address.slice(-12), mode: hasLlm() ? "llm" : "scripted", ...stats, ms: Date.now() - started });
+        logEvent("agent_run", { vault: opened.contract.address.slice(-12), mode: agentUsesLlm() ? "llm" : "scripted", ...stats, ms: Date.now() - started });
         controller.close();
       }
     },

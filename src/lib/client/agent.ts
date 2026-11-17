@@ -18,6 +18,7 @@ export interface ToolInfo {
 export interface AppConfig {
   network: "mainnet" | "chipnet";
   llm: boolean;
+  deepAnalysis: "live" | "demo"; // "demo": the deep-analysis tool returns a placeholder answer
   feePerCall: string; // estimated miner fee per paid call, sats (counts toward the cap)
   tools: ToolInfo[];
   sellers: SellerInfo[]; // suggested third-party sellers (SATCHEL_SELLERS)

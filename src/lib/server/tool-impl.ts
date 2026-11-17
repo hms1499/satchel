@@ -1,6 +1,6 @@
 import { generateText } from "ai";
 import { PAID_TOOLS, type ToolName } from "../tools";
-import { AGENT_MODEL, hasLlm } from "./llm";
+import { TOOL_MODEL, toolUsesLlm } from "./llm";
 import { InputError as ToolInputError } from "../../../provider-kit/src/index";
 import { addressInfo, checkAddress, checkTxid, electrumRpc, fetchTransaction, txInfo, type Rpc } from "./chain-tools";
 
@@ -83,19 +83,19 @@ async function deepAnalysis(params: URLSearchParams) {
   const question = (params.get("question") ?? "").slice(0, 500);
   const material = (params.get("material") ?? "").slice(0, 6000);
   if (!question) throw new ToolInputError("question is required");
-  if (!hasLlm()) {
+  if (!toolUsesLlm()) {
     return {
-      analysis: `Demo mode (no LLM configured): received ${material.length} characters of material for the question "${question}".`,
+      analysis: `Demo mode (TOOL_LLM is off): received ${material.length} characters of material for the question "${question}".`,
       model: "none",
     };
   }
   const { text } = await generateText({
-    model: AGENT_MODEL,
+    model: TOOL_MODEL,
     system:
       "You are a concise research analyst. Answer in at most 120 words with 3-5 bullet points. Use only the provided material; say what is uncertain. Never give financial advice.",
     prompt: `Question: ${question}\n\nMaterial:\n${material}`,
   });
-  return { analysis: text, model: AGENT_MODEL };
+  return { analysis: text, model: TOOL_MODEL };
 }
 
 const COIN_ID = /^[a-z0-9-]{2,60}$/;

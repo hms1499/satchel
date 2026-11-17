@@ -243,18 +243,18 @@ describe("D3 agent mode is explicit", () => {
   it("does not use the LLM just because Vercel provides an OIDC token", async () => {
     vi.stubEnv("VERCEL_OIDC_TOKEN", "x");
     vi.stubEnv("AGENT_MODE", "");
-    const { hasLlm } = await import("./llm");
-    expect(hasLlm()).toBe(false);
+    const { agentUsesLlm } = await import("./llm");
+    expect(agentUsesLlm()).toBe(false);
   });
 
   it("uses the LLM only with AGENT_MODE=llm and gateway credentials", async () => {
     vi.stubEnv("AGENT_MODE", "llm");
     vi.stubEnv("AI_GATEWAY_API_KEY", "");
     vi.stubEnv("VERCEL_OIDC_TOKEN", "");
-    expect((await import("./llm")).hasLlm()).toBe(false);
+    expect((await import("./llm")).agentUsesLlm()).toBe(false);
     vi.resetModules();
     vi.stubEnv("VERCEL_OIDC_TOKEN", "x");
-    expect((await import("./llm")).hasLlm()).toBe(true);
+    expect((await import("./llm")).agentUsesLlm()).toBe(true);
   });
 
   it("falls back to the scripted plan when the LLM call fails", async () => {

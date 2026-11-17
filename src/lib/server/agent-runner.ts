@@ -2,7 +2,7 @@ import { ToolLoopAgent, isStepCount, tool } from "ai";
 import { z } from "zod";
 import type { HostedToolName, ToolName } from "../tools";
 import type { openDescriptor } from "./agent-wallet";
-import { AGENT_MODEL, hasLlm } from "./llm";
+import { AGENT_MODEL, agentUsesLlm } from "./llm";
 import { paidCall, type Emit } from "./paid-client";
 
 type Opened = ReturnType<typeof openDescriptor>;
@@ -94,7 +94,7 @@ export async function runAgent(origin: string, opened: Opened, prompt: string, e
     emitEvent(e);
   };
   const tools = makeTools(origin, opened, emit);
-  if (!hasLlm()) return runScripted(prompt, tools, emit);
+  if (!agentUsesLlm()) return runScripted(prompt, tools, emit);
 
   const agent = new ToolLoopAgent({
     model: AGENT_MODEL,
