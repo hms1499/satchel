@@ -6,7 +6,7 @@ import type { DappConnectionManager } from "@wizardconnect/dapp";
 import { NETWORK } from "../config";
 import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, lockingBytecodeOf, type VaultParams } from "../vault";
 import { paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
-import { encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
+import { descriptorFromRecovered, encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
 import { toRelaySignRequest } from "../wc-relay";
 import { broadcast, getBlockHeight, getHistory, getTransactions, getUtxosFor, httpProvider } from "./chain";
 
@@ -200,18 +200,7 @@ export async function findOwnedVaults(manager: DappConnectionManager, knownPayee
   for (const v of found) {
     const utxo = await findVaultUtxo(getVaultContract(v.params, httpProvider));
     if (!utxo) continue; // already withdrawn
-    open.push({
-      balance: utxo.satoshis,
-      descriptor: {
-        version: 1,
-        network: NETWORK,
-        agentIndex: v.agentIndex,
-        token: "",
-        params: paramsToDescriptorParams(v.params),
-        genesisTxid: v.genesisTxid,
-        recovered: true,
-      },
-    });
+    open.push({ balance: utxo.satoshis, descriptor: descriptorFromRecovered(v, NETWORK) });
   }
   return open;
 }

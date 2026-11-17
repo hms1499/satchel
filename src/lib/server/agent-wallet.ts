@@ -18,13 +18,15 @@ export function openDescriptor(raw: unknown, { requireToken = true }: { requireT
   if (!parsed.success) throw new AgentAuthError("Invalid vault descriptor");
   const d: VaultDescriptor = parsed.data;
   if (d.network !== NETWORK) throw new AgentAuthError(`Descriptor is for ${d.network}, server runs ${NETWORK}`);
+  if (requireToken && d.external) throw new AgentAuthError("This vault's agent runs in your own MCP client, not on Satchel.");
   if (requireToken && !verifyAccess(d.agentIndex, d.token)) {
     throw new AgentAuthError(
       d.token ? "Invalid agent access token" : "This vault was recovered from the blockchain, so the agent can't use it. Withdraw and create a new vault.",
     );
   }
-  const key = agentKey(d.agentIndex);
-  if (key.pubHex !== d.params.agentPk) throw new AgentAuthError("Descriptor agent key mismatch");
+  // Read-only use (status) also works for external agents, whose key Satchel does not have.
+  const key = d.external ? null : agentKey(d.agentIndex);
+  if (key && key.pubHex !== d.params.agentPk) throw new AgentAuthError("Descriptor agent key mismatch");
   const params = descriptorParams(d);
   const contract = getVaultContract(params, getProvider());
   return { descriptor: d, params, contract, key };
@@ -37,10 +39,11 @@ const spender = new VaultSpender();
 
 /** The vault UTXO to spend next, ignoring outpoints we just learned are already spent (`skip`). */
 export function currentVaultUtxo(o: Opened, skip: ReadonlySet<string> = new Set()): Promise<SpendableUtxo | undefined> {
-  return spender.currentVaultUtxo(target(o), skip);
+  return spender.currentVaultUtxo(o, skip);
 }
 
 function target(o: Opened): SpendTarget {
+  if (!o.key) throw new AgentAuthError("This vault's agent runs in your own MCP client, not on Satchel.");
   return { contract: o.contract, params: o.params, agentSigner: o.key.signer, provider: getProvider() };
 }
 

@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SignatureTemplate, randomUtxo, type SpendableUtxo } from "cashscript";
 import { NodeLikeProvider } from "../test-utils/node-like-provider";
-import { binToHex, decodeTransaction, encodeCashAddress, encodeTransaction, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
+import { binToHex, encodeCashAddress, encodeTransaction, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
 
 process.env.AGENT_MASTER_SEED ??= "hardening-agent-seed-0123456789abcdef0123456789ab";
 process.env.PROVIDER_SEED ??= "hardening-provider-seed-0123456789abcdef0123456789";

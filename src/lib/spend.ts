@@ -66,7 +66,7 @@ export class VaultSpender {
   private locks = new Map<string, Promise<unknown>>();
 
   /** The vault UTXO to spend next, ignoring outpoints we just learned are already spent (`skip`). */
-  async currentVaultUtxo(t: SpendTarget, skip: ReadonlySet<string> = new Set()): Promise<SpendableUtxo | undefined> {
+  async currentVaultUtxo(t: Pick<SpendTarget, "contract">, skip: ReadonlySet<string> = new Set()): Promise<SpendableUtxo | undefined> {
     const fromNetwork = await findVaultUtxo(t.contract, skip);
     const cached = this.successor.get(t.contract.address);
     const outpoint = (u: SpendableUtxo) => `${u.txid}:${u.vout}`;

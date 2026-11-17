@@ -6,10 +6,13 @@ import type { VaultParams } from "./vault";
  * server with each agent request. It contains no secrets except the agent access token, which only
  * lets the caller ask our agent to spend within the covenant's limits.
  */
+/** Agent index recorded for a vault whose agent key is held by the user's own agent (e.g. satchel-pay-mcp). */
+export const EXTERNAL_AGENT_INDEX = 0xffffffff;
+
 export const DescriptorSchema = z.object({
   version: z.literal(1),
   network: z.enum(["mainnet", "chipnet"]),
-  agentIndex: z.number().int().nonnegative(),
+  agentIndex: z.number().int().nonnegative().max(EXTERNAL_AGENT_INDEX),
   // Empty for a vault recovered from chain: the access token is never published, so the agent can't be driven.
   token: z.string().regex(/^([0-9a-f]{64})?$/),
   params: z.object({
@@ -22,6 +25,8 @@ export const DescriptorSchema = z.object({
   createdAt: z.number().optional(),
   genesisTxid: z.string().optional(),
   recovered: z.boolean().optional(),
+  // The agent key is held outside Satchel (the user's own agent); Satchel's hosted agent never drives this vault.
+  external: z.boolean().optional(),
 });
 
 export type VaultDescriptor = z.infer<typeof DescriptorSchema>;

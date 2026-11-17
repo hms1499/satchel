@@ -1,6 +1,8 @@
 import { binToHex, decodeTransaction, flattenBinArray, hexToBin, utf8ToBin } from "@bitauth/libauth";
 import type { NetworkProvider } from "cashscript";
 import { getVaultContract, lockingBytecodeOf, type VaultParams } from "./vault";
+import { EXTERNAL_AGENT_INDEX, paramsToDescriptorParams, type VaultDescriptor } from "./descriptor";
+import type { BchNetwork } from "./config";
 
 /**
  * On-chain vault recovery.
@@ -98,6 +100,20 @@ export interface RecoveredVault {
   agentIndex: number;
   params: VaultParams;
   genesisTxid: string;
+}
+
+/** A descriptor for a vault rebuilt from chain: no access token (never published), so only owner actions work. */
+export function descriptorFromRecovered(v: RecoveredVault, network: BchNetwork): VaultDescriptor {
+  return {
+    version: 1,
+    network,
+    agentIndex: v.agentIndex,
+    token: "",
+    params: paramsToDescriptorParams(v.params),
+    genesisTxid: v.genesisTxid,
+    recovered: true,
+    external: v.agentIndex === EXTERNAL_AGENT_INDEX,
+  };
 }
 
 /**
