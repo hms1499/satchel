@@ -22,11 +22,11 @@
  * DEPOSIT + 500 sats.
  *
  * Expected cost with the defaults (fees ~700-800 sats per vault payment with a 3-payee allowlist):
- *   send 1000 + fee, bch-tx 500 + fee, seller 500 + fee  =>  spent ~4,100-4,400 of the 5,000 cap; the next bch-tx
- *   (~1,200-1,300) is refused by the covenant (a rejected tx costs nothing). Then the owner withdraws ~3,600.
+ *   send 1000 + fee, bch-tx 600 + fee, seller 600 + fee  =>  spent ~4,300-4,600 of the 5,000 cap; the next bch-tx
+ *   (~1,300-1,400) is refused by the covenant (a rejected tx costs nothing). Then the owner withdraws ~3,600.
  *   The deposit leaves room above the cap so the refusal is always the cap, never "vault balance too low".
  *   Lost to miners: genesis (~400) + 3 payments (~2,100-2,400) + withdraw (~400-500)  =>  about 3,000-3,500 sats.
- *   The 1000-sat send returns to the owner (default custom payee); 500 goes to the seller's payTo and 500 to
+ *   The 1000-sat send returns to the owner (default custom payee); 600 goes to the seller's payTo and 600 to
  *   Satchel's bch-tx provider address (recoverable with `scripts/e2e.mts sweep` by whoever holds PROVIDER_SEED).
  *
  * If the run dies after genesis, the vault descriptor is in ../.e2e-vaults/; withdraw it with

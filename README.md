@@ -59,7 +59,7 @@ never costs money, and it serves `/.well-known/satchel.json` so `satchel_catalog
 `/api/tools/*` run on it.
 
 [`examples/provider`](examples/provider/README.md) is a working seller built with it: a **CashAddr and script decoder**
-(`POST /api/address`, `POST /api/script`, 500 sats per call) on Hono, paid straight to the seller's own address.
+(`POST /api/address`, `POST /api/script`, 600 sats per call) on Hono, paid straight to the seller's own address.
 
 ## Roadmap
 

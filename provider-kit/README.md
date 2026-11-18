@@ -17,7 +17,7 @@ import { createPaywall, InputError, type PaidRoute } from "satchel-pay-server";
 
 const pay = createPaywall({ network: "chipnet", secret: process.env.SELLER_SECRET! });
 const route: PaidRoute = {
-  resource: "/api/price", name: "price", price: 500n, payTo: process.env.SELLER_PAY_TO!, params: ["id"],
+  resource: "/api/price", name: "price", price: 600n, payTo: process.env.SELLER_PAY_TO!, params: ["id"],
   validate: (p) => { if (!p.get("id")) throw new InputError("id is required"); },
   handler: async (p) => ({ id: p.get("id"), usd: await lookupPrice(p.get("id")!) }),
 };
@@ -33,7 +33,7 @@ import { createPaywall, wellKnownResponse, type PaidRoute } from "satchel-pay-se
 
 const pay = createPaywall({ network: "chipnet", secret: process.env.SELLER_SECRET! });
 const route: PaidRoute = {
-  resource: "/api/price", name: "price", price: 500n, payTo: process.env.SELLER_PAY_TO!, params: ["id"],
+  resource: "/api/price", name: "price", price: 600n, payTo: process.env.SELLER_PAY_TO!, params: ["id"],
   handler: async (p) => ({ id: p.get("id"), usd: await lookupPrice(p.get("id")!) }),
 };
 const app = new Hono();

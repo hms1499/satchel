@@ -13,7 +13,7 @@ const { network, payTo, secret } = loadSellerEnv(process.env);
 // createPaywall throws unless SELLER_SECRET is a string of at least 32 characters.
 const pay = createPaywall({ network, secret: secret as string, log: (e) => console.log(JSON.stringify(e)) });
 
-const PRICE = 500n;
+const PRICE = 600n;
 
 const addressRoute: PaidRoute = {
   resource: "/api/address",
@@ -72,7 +72,7 @@ app.get("/.well-known/satchel.json", (c) => {
 app.get("/", (c) =>
   c.text(
     [
-      "Satchel example seller: a Bitcoin Cash address and script decoder, paid per call (500 sats) over HTTP 402.",
+      "Satchel example seller: a Bitcoin Cash address and script decoder, paid per call (600 sats) over HTTP 402.",
       "",
       "POST /api/address  {\"address\": \"...\"}",
       "POST /api/script   {\"hex\": \"...\"}",

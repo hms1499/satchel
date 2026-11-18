@@ -7,8 +7,8 @@ A small, real bch-sc402 seller: a Bitcoin Cash **CashAddr and script decoder** t
 
 | Endpoint | Body | Price | Returns |
 | --- | --- | --- | --- |
-| `POST /api/address` | `{"address": "..."}` | 500 sats | all address forms (CashAddr, token-aware `z...`, legacy; legacy is `null` for P2SH32), type, network, locking bytecode |
-| `POST /api/script` | `{"hex": "..."}` | 500 sats | disassembly, script type, OP_RETURN pushes with UTF-8 text when valid |
+| `POST /api/address` | `{"address": "..."}` | 600 sats | all address forms (CashAddr, token-aware `z...`, legacy; legacy is `null` for P2SH32), type, network, locking bytecode |
+| `POST /api/script` | `{"hex": "..."}` | 600 sats | disassembly, script type, OP_RETURN pushes with UTF-8 text when valid |
 
 Both validate the input before answering 402, so a request that can only fail never costs money (bad address: 400).
 `GET /.well-known/satchel.json` lists both tools (endpoints are built from the request origin) and `GET /` is a plain-text

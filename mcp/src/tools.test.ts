@@ -461,6 +461,28 @@ describe("labels and sellers", () => {
   });
 });
 
+describe("satchel_catalog dust prices", () => {
+  it("never reports a tool priced below the dust limit as allowed", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://seller.test" });
+    const { code } = await createVault({ allowlist: [provider3.address, alice] });
+    const base = fakeNetwork(provider).fetchFn;
+    const tool = (name: string, price: string) => ({ name, title: name, description: "d", price, params: {}, payTo: alice, endpoint: `https://seller.test/api/${name}` });
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === "https://seller.test/.well-known/satchel.json") {
+        return Response.json({ name: "Seller", network: "mainnet", tools: [tool("tiny", "500"), tool("ok", "546")] });
+      }
+      return base(input, init);
+    }) as typeof fetch;
+    const h = handlers(fetchFn);
+    await h.connect(code);
+    const out = json(await h.catalog());
+    expect(out.sellers[0].tools).toEqual([
+      expect.objectContaining({ name: "tiny", allowed: false }),
+      expect.objectContaining({ name: "ok", allowed: true }),
+    ]);
+  });
+});
+
 describe("satchel_catalog hardening", () => {
   const sellerTool = (name: string, payTo: string, extra: Record<string, unknown> = {}) => ({ name, title: name, description: "d", price: "700", params: {}, payTo, endpoint: `https://seller.test/api/${name}`, ...extra });
   const withSeller = (base: typeof fetch, serve: () => Response | Promise<Response>) =>

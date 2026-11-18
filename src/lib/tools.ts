@@ -34,7 +34,7 @@ export const PAID_TOOLS = {
     title: "BCH transaction decoder",
     description:
       "Decodes a BCH transaction: confirmations, inputs, outputs (address, value, token data), OP_RETURN data, size and fee.",
-    price: 500n,
+    price: 600n,
     provider: 4,
     params: { txid: "A transaction id (64 hex chars)" },
   },

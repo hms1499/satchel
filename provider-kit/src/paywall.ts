@@ -15,6 +15,16 @@ export class InputError extends Error {
   }
 }
 
+/** The BCH P2PKH dust limit in sats: nodes do not relay smaller outputs, so a smaller payment can never be made. */
+export const MIN_PRICE_SATS = 546n;
+
+function assertPrice(route: PaidRoute): void {
+  if (typeof route.price !== "bigint") throw new Error(`satchel-pay-server: route "${route.name}" price must be a bigint of sats`);
+  if (route.price < MIN_PRICE_SATS) {
+    throw new Error(`satchel-pay-server: route "${route.name}": price ${route.price} sats is below the ${MIN_PRICE_SATS}-sat dust limit; payments that small cannot be relayed`);
+  }
+}
+
 export interface PaidRoute {
   /** The path the challenge is issued for, e.g. "/api/price". */
   resource: string;
@@ -79,6 +89,7 @@ export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route:
   const log = cfg.log ?? (() => {});
 
   async function handle(req: Request, route: PaidRoute): Promise<Response> {
+    assertPrice(route);
     const params = await readParams(req);
 
     // Reject input that can only fail before asking for payment.

@@ -141,8 +141,10 @@ export function createHandlers(deps: HandlerDeps) {
     return { ...v, info, utxo };
   };
 
-  /** True when satchel_pay_fetch would pay this entry: an allowlisted payee on an allowed payment origin. */
-  const payable = (allowlist: string[], payTo: string, endpoint: string) => {
+  /** True when satchel_pay_fetch would pay this entry: an allowlisted payee on an allowed payment origin, priced at or above the dust limit. */
+  const payable = (allowlist: string[], payTo: string, endpoint: string, price: string) => {
+    // Below the dust limit the covenant spend cannot be built (nodes would not relay the output).
+    if (!/^\d+$/.test(price) || BigInt(price) < DUST_SATS) return false;
     let origin: string;
     try {
       origin = new URL(endpoint).origin;
@@ -171,7 +173,7 @@ export function createHandlers(deps: HandlerDeps) {
       ok: true,
       tools: parsed.data.tools.map((t) => {
         const payeeLabel = info ? labelOf(info, t.payTo) : null;
-        return { ...t, allowed: payable(allowlist, t.payTo, t.endpoint), ...(payeeLabel ? { payeeLabel } : {}) };
+        return { ...t, allowed: payable(allowlist, t.payTo, t.endpoint, t.price), ...(payeeLabel ? { payeeLabel } : {}) };
       }),
     };
   };
@@ -278,7 +280,7 @@ export function createHandlers(deps: HandlerDeps) {
             price: t.price,
             params: t.params ?? {},
             payTo: t.payTo,
-            allowed: payable(allowlist, t.payTo, endpoint),
+            allowed: payable(allowlist, t.payTo, endpoint, t.price),
           };
         }),
         sellers,

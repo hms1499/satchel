@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin } from "@bitauth/libauth";
-import { createPaywall, InputError, wellKnownResponse, type PaidRoute } from "./paywall";
+import { createPaywall, InputError, MIN_PRICE_SATS, wellKnownResponse, type PaidRoute } from "./paywall";
 import { memoForChallenge, type Challenge } from "./protocol";
 import { electrumTransactionFetcher } from "./electrum";
 
@@ -40,7 +40,7 @@ function setup(overrides: Partial<PaidRoute> = {}) {
     return hex;
   });
   const handler = vi.fn(async (p: URLSearchParams) => ({ price: 42, id: p.get("id") }));
-  const route: PaidRoute = { resource: "/api/price", name: "price", price: 500n, payTo: PAY_TO, params: ["id"], handler, ...overrides };
+  const route: PaidRoute = { resource: "/api/price", name: "price", price: 600n, payTo: PAY_TO, params: ["id"], handler, ...overrides };
   const paywall = createPaywall({ network: "chipnet", secret: SECRET, getTransaction, now: () => NOW });
 
   /** Asks for a 402, pays it with a real tx the stub can serve, and returns the X-Payment header. */
@@ -87,7 +87,7 @@ describe("createPaywall().handle", () => {
     const body = (await res.json()) as { error: string; accepts: Record<string, unknown>[] };
     expect(body.error).toBe("payment required");
     expect(body.accepts[0].scheme).toBe("bch-sc402");
-    expect(body.accepts[0]).toMatchObject({ resource: "/api/price", payTo: PAY_TO, amount: "500", network: "chipnet", expires: NOW + 600_000 });
+    expect(body.accepts[0]).toMatchObject({ resource: "/api/price", payTo: PAY_TO, amount: "600", network: "chipnet", expires: NOW + 600_000 });
     expect(Object.keys(body.accepts[0]).sort()).toEqual(["amount", "expires", "network", "nonce", "payTo", "request", "resource", "scheme", "sig"]);
   });
 
@@ -156,7 +156,7 @@ describe("createPaywall().handle", () => {
 
   it("logs one event per paid call", async () => {
     const log = vi.fn();
-    const route: PaidRoute = { resource: "/r", name: "r", price: 1n, payTo: PAY_TO, params: [], handler: async () => 1 };
+    const route: PaidRoute = { resource: "/r", name: "r", price: 600n, payTo: PAY_TO, params: [], handler: async () => 1 };
     const paywall = createPaywall({ network: "chipnet", secret: SECRET, getTransaction: async () => "00", now: () => NOW, log });
     const res = await paywall.handle(new Request("https://x.example/r"), route);
     const { accepts } = (await res.json()) as { accepts: Challenge[] };
@@ -186,6 +186,29 @@ describe("InputError", () => {
     expect(new InputError("bad").status).toBe(400);
     expect(new InputError("gone", 404).status).toBe(404);
     expect(new InputError("bad")).toBeInstanceOf(Error);
+  });
+});
+
+describe("dust limit", () => {
+  it("exports the 546-sat dust limit as a bigint", () => {
+    expect(MIN_PRICE_SATS).toBe(546n);
+  });
+
+  it("rejects a route priced below the dust limit with a clear error, before any 402", async () => {
+    const { paywall, route } = setup({ price: 500n });
+    await expect(paywall.handle(new Request(`${URL_BASE}?id=x`), route)).rejects.toThrow(
+      "price 500 sats is below the 546-sat dust limit; payments that small cannot be relayed",
+    );
+  });
+
+  it("rejects a non-bigint price", async () => {
+    const { paywall, route } = setup({ price: 600 as unknown as bigint });
+    await expect(paywall.handle(new Request(`${URL_BASE}?id=x`), route)).rejects.toThrow(/bigint/);
+  });
+
+  it("accepts a price exactly at the dust limit", async () => {
+    const { paywall, route } = setup({ price: 546n });
+    expect((await paywall.handle(new Request(`${URL_BASE}?id=x`), route)).status).toBe(402);
   });
 });
 

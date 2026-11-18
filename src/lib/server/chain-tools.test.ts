@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { binToHex, encodeCashAddress, encodeTransaction, hashTransaction, hexToBin, sha256, utf8ToBin } from "@bitauth/libauth";
 import { NETWORK } from "../config";
+import { MIN_PAYMENT } from "../vault";
 import { prefixFor } from "../payees";
 import { HOSTED_AGENT_TOOLS, PAID_TOOLS, PROVIDER_COUNT, TOOL_NAMES, defaultAllowed } from "../tools";
 import { addressInfo, txInfo, withTimeout, type Rpc } from "./chain-tools";
@@ -318,12 +319,16 @@ describe("Electrum time limit", () => {
 });
 
 describe("catalog", () => {
+  it("prices every tool at or above the dust limit, so the covenant spend can pay it", () => {
+    for (const n of TOOL_NAMES) expect(PAID_TOOLS[n].price, n).toBeGreaterThanOrEqual(MIN_PAYMENT);
+  });
+
   it("appends the chain tools without moving existing provider indexes", () => {
     expect(TOOL_NAMES).toEqual(["crypto-price", "web-reader", "deep-analysis", "bch-address", "bch-tx"]);
     expect(TOOL_NAMES.map((n) => PAID_TOOLS[n].provider)).toEqual([0, 1, 2, 3, 4]);
     expect(PROVIDER_COUNT).toBe(5);
     expect(PAID_TOOLS["bch-address"].price).toBe(800n);
-    expect(PAID_TOOLS["bch-tx"].price).toBe(500n);
+    expect(PAID_TOOLS["bch-tx"].price).toBe(600n);
     expect(Object.keys(PAID_TOOLS["bch-address"].params)).toEqual(["address"]);
     expect(Object.keys(PAID_TOOLS["bch-tx"].params)).toEqual(["txid"]);
   });
