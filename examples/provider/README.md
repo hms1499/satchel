@@ -33,7 +33,7 @@ curl -i -X POST localhost:8787/api/address -d '{"address":"bchtest:..."}'   # 40
 
 ## Deploy on Vercel
 
-Create a new Vercel project from this repo with **Root Directory** `agentvault/examples/provider`. Vercel detects
+Create a new Vercel project from this repo with **Root Directory** `examples/provider`. Vercel detects
 Hono from the `hono` dependency and runs the default-exported app in `src/index.ts` (no `api/` folder or `vercel.json`
 needed). Set `SELLER_NETWORK`, `SELLER_SECRET` and `SELLER_PAY_TO` in the project's environment variables. Check
 `/.well-known/satchel.json` and that `POST /api/address` with a valid address gives a 402.
