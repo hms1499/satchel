@@ -6,8 +6,8 @@ import {
   type CatalogEntry,
   type PaidRoute,
 } from "satchel-pay-server";
-import { loadSellerEnv } from "./env";
-import { decodeAddress, decodeScript } from "./decoder";
+import { loadSellerEnv } from "./env.js";
+import { decodeAddress, decodeScript } from "./decoder.js";
 
 const { network, payTo, secret } = loadSellerEnv(process.env);
 // createPaywall throws unless SELLER_SECRET is a string of at least 32 characters.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadSellerEnv } from "./env";
+import { loadSellerEnv } from "./env.js";
 
 const MAIN = "bitcoincash:qpm2qsznhks23z7629mms6s4cwef74vcwvy22gdx6a";
 const TEST = "bchtest:qz509yk0wh4egyh63jyu0uu4kljp0ngauure7y5xe2";

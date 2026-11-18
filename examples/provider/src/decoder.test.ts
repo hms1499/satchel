@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeCashAddress } from "@bitauth/libauth";
 import { InputError } from "satchel-pay-server";
-import { decodeAddress, decodeScript } from "./decoder";
+import { decodeAddress, decodeScript } from "./decoder.js";
 
 // Well-known mainnet P2PKH vector (libauth / cashaddr spec).
 const LEGACY = "1BpEi6DfDAUFd7GtittLSdBeYJvcoaVggu";

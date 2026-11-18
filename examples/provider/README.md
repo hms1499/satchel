@@ -33,9 +33,9 @@ curl -i -X POST localhost:8787/api/address -d '{"address":"bchtest:..."}'   # 40
 
 ## Deploy on Vercel
 
-Create a new Vercel project from this repo with **Root Directory** `examples/provider`. Vercel detects
-Hono from the `hono` dependency and runs the default-exported app in `src/index.ts` (no `api/` folder or `vercel.json`
-needed). Set `SELLER_NETWORK`, `SELLER_SECRET` and `SELLER_PAY_TO` in the project's environment variables. Check
+Create a new Vercel project from this repo with **Root Directory** `examples/provider`. `vercel.json` sets
+the Hono framework preset, and Vercel runs the default-exported app in `src/index.ts`. Vercel compiles each file to native
+ESM without bundling, so relative imports keep their `.js` extension (`tsconfig` uses `NodeNext` to enforce it). Set `SELLER_NETWORK`, `SELLER_SECRET` and `SELLER_PAY_TO` in the project's environment variables. Check
 `/.well-known/satchel.json` and that `POST /api/address` with a valid address gives a 402.
 
 `satchel-pay-server` is installed from `vendor/satchel-pay-server-0.1.0.tgz` (an `npm pack` of `../../provider-kit`) until
