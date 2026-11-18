@@ -14,6 +14,28 @@ Every payment, by any route, goes through the same covenant. If the agent is pro
 
 Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail) (Mainnet Track).
 
+| | |
+| --- | --- |
+| **Live app (BCH mainnet)** | https://satchel-sigma.vercel.app |
+| **Your own agent (MCP)** | [`satchel-pay-mcp`](https://www.npmjs.com/package/satchel-pay-mcp): `claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0` |
+| **Sell an API to agents** | [`satchel-pay-server`](https://www.npmjs.com/package/satchel-pay-server): `npm install satchel-pay-server` |
+| **Live example seller** | https://satchel-example-seller.vercel.app (built on `satchel-pay-server`) |
+
+## Verified on mainnet
+
+One end-to-end run with real coins (`mcp/scripts/mainnet-e2e.mts`, 2026-11-18, `E2E OK`): a developer's own agent, through
+`satchel-pay-mcp`, pays Satchel and an independent seller from one vault.
+
+| Step | What happened | Transaction |
+| --- | --- | --- |
+| Vault created | Covenant funded with a v2 recovery memo (seller and custom payee stored as hashes) | [`6d5d66cd…a99ea6`](https://explorer.salemkode.com/tx/6d5d66cd74c7b07807b56e8741c91b957bd89a6075c0635c0dd89fd524a99ea6) |
+| Direct payment | `satchel_send`: 1,000 sats to an allowlisted custom payee, with an on-chain memo | [`ed2bfd40…cfa515`](https://explorer.salemkode.com/tx/ed2bfd4008fa9fac29cd0d96fe4b208b2ef563f052835f67d453635a51cfa515) |
+| Paid API call | HTTP 402 → the agent pays 600 sats from the vault → Satchel's `bch-tx` answers | [`dac2b6f5…bd64d4`](https://explorer.salemkode.com/tx/dac2b6f5f40c87566aecf070dace7e0a3cb06333f8e90c6dbe6085ef88bd64d4) |
+| Third-party seller | 600 sats to the example seller, an independent API on `satchel-pay-server` | [`2ffc1c3c…a74b37`](https://explorer.salemkode.com/tx/2ffc1c3c3a82a201889132b2ddebdafae4840004062ed3a5ab81d1ca68a74b37) |
+| Over the cap | The next payment would pass the 5,000-sat cap: rejected by every node at `require(newSpent <= cap)` | none, nothing spent |
+| Recovery | The vault is rebuilt from the owner's chain history alone (`findVaultsInTransactions`), allowlist included | (read-only) |
+| Owner withdraws | The owner key empties the vault and burns its state NFT | [`776945c2…f5e299`](https://explorer.salemkode.com/tx/776945c28c5889a1ae4c3b8f46f02515e3649dcd3c4da4ef681a4d93c8f5e299) |
+
 ## Demo flow (about 2 minutes)
 
 1. **Connect** a wallet with WizardConnect (for example Cashonize).

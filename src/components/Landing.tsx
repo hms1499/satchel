@@ -1,3 +1,4 @@
+import { LINKS, MAINNET_PROOF, proofTxUrl } from "@/lib/proof";
 import { Button } from "./ui";
 
 const RULES = [
@@ -30,6 +31,15 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
               How it works
             </a>
           </div>
+          <p className="text-[15px] text-muted">
+            <a href="#proof" className="font-semibold text-brand hover:underline">
+              Verified on mainnet ↓
+            </a>
+            <span className="px-2">·</span>
+            <a href="#developers" className="font-semibold text-brand hover:underline">
+              Use it from your own agent ↓
+            </a>
+          </p>
         </div>
         <div className="flex min-w-0 flex-[1_1_360px] flex-col gap-3 rounded-[20px] border border-line bg-surface p-6 shadow-[0_1px_2px_rgba(17,22,20,0.04),0_12px_32px_rgba(17,22,20,0.06)]">
           <span className="text-[13px] font-semibold text-muted">Why this matters</span>
@@ -84,6 +94,75 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
           {"POST /api/tools/crypto-price  X-Payment: <txid>\n"}
           <span className="text-[#7fe3c2]">{"← 200 { price, change24h, marketCap }"}</span>
         </pre>
+      </section>
+
+      <section id="proof" className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <h2 className="font-display text-[32px] font-bold tracking-tight">Verified on BCH mainnet</h2>
+          <p className="max-w-[680px] text-body">
+            One end-to-end run with real coins: a developer&apos;s own agent, through the Satchel MCP server, paying Satchel
+            and an independent seller from one vault. Every step is a public transaction.
+          </p>
+        </div>
+        <ol className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3">
+          {MAINNET_PROOF.map((s, i) => (
+            <li key={s.label} className="flex min-w-0 flex-col gap-1.5 rounded-2xl border border-line bg-surface p-4">
+              <span className="text-[13px] font-semibold text-muted">
+                {i + 1}. {s.label}
+              </span>
+              <p className="text-[15px] text-body">{s.detail}</p>
+              {s.txid ? (
+                <a
+                  href={proofTxUrl(s.txid)}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-auto truncate font-mono text-[13px] text-brand underline-offset-2 hover:underline"
+                >
+                  tx {s.txid.slice(0, 10)}…{s.txid.slice(-6)} ↗
+                </a>
+              ) : (
+                <span className="mt-auto font-mono text-[13px] text-warn">rejected by consensus, no tx</span>
+              )}
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <section id="developers" className="flex flex-col gap-4">
+        <h2 className="font-display text-[32px] font-bold tracking-tight">For developers</h2>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] gap-4">
+          <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-5">
+            <h3 className="font-display text-[19px] font-semibold">Give your own agent a Satchel</h3>
+            <p className="text-body">
+              An MCP server for Claude, Cursor, VS Code and other MCP clients. The agent key stays on your machine; the
+              covenant enforces the cap and the allowlist.
+            </p>
+            <code className="block overflow-x-auto whitespace-nowrap rounded-xl bg-ink px-4 py-3 font-mono text-[13px] text-[#e8ece6]">
+              claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
+            </code>
+            <a href={LINKS.mcpNpm} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
+              satchel-pay-mcp on npm ↗
+            </a>
+          </div>
+          <div className="flex min-w-0 flex-col gap-3 rounded-2xl border border-line bg-surface p-5">
+            <h3 className="font-display text-[19px] font-semibold">Sell your API to agents</h3>
+            <p className="text-body">
+              Put any Fetch API endpoint behind a BCH paywall: signed 402 challenges, payment checks, no database and no
+              wallet software. Payments go straight to your address.
+            </p>
+            <code className="block overflow-x-auto whitespace-nowrap rounded-xl bg-ink px-4 py-3 font-mono text-[13px] text-[#e8ece6]">
+              npm install satchel-pay-server
+            </code>
+            <div className="flex flex-wrap gap-x-5 gap-y-1">
+              <a href={LINKS.kitNpm} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
+                satchel-pay-server on npm ↗
+              </a>
+              <a href={LINKS.seller} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
+                Live example seller ↗
+              </a>
+            </div>
+          </div>
+        </div>
       </section>
     </div>
   );
