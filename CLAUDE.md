@@ -75,7 +75,7 @@ is committed and imported by both the client and the server.
   `src/lib/server/x402.ts` re-exports from it. Depends only on libauth and `@electrum-cash/network`, not cashscript.
 - `examples/provider/`: example seller "CashAddr & script decoder" on Hono + the kit (`POST /api/address`,
   `POST /api/script`, `/.well-known/satchel.json`). Env `SELLER_NETWORK`, `SELLER_SECRET`, `SELLER_PAY_TO`. Installs the
-  kit from `vendor/satchel-pay-server-0.1.0.tgz` (an `npm pack` of `provider-kit/`) until it is on npm.
+  kit from npm (`satchel-pay-server`), not from `provider-kit/`: after a kit change, publish a new version and bump it there.
 - Shared payment code used by both the hosted agent and the MCP server: `src/lib/spend.ts` (`VaultSpender`),
   `src/lib/x402-client.ts`, `src/lib/connect-code.ts`. Vaults with `external: true` (agent index `0xffffffff`) belong
   to a user's own agent: Satchel serves their status but never drives them.

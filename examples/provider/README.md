@@ -38,7 +38,7 @@ the Hono framework preset, and Vercel runs the default-exported app in `src/inde
 ESM without bundling, so relative imports keep their `.js` extension (`tsconfig` uses `NodeNext` to enforce it). Set `SELLER_NETWORK`, `SELLER_SECRET` and `SELLER_PAY_TO` in the project's environment variables. Check
 `/.well-known/satchel.json` and that `POST /api/address` with a valid address gives a 402.
 
-`satchel-pay-server` is installed from `vendor/satchel-pay-server-0.1.0.tgz` (an `npm pack` of `../../provider-kit`) until
-it is published to npm.
+`satchel-pay-server` comes from npm (`npm install satchel-pay-server`); its source is in [`../../provider-kit`](../../provider-kit).
+After changing the kit, publish a new version and bump the dependency here.
 
 Payments are accepted at 0-conf, see the kit README for the risk.
