@@ -137,6 +137,8 @@ tool calls a real model only with `TOOL_LLM=on` plus the same credentials (model
 ```bash
 npx tsx scripts/e2e.mts address            # prints the test owner address; fund it first
 npx tsx scripts/e2e.mts run                # genesis → agent payments → attacks → withdraw (needs npm run dev)
+npx tsx scripts/e2e.mts recover            # lists the owner's open vaults, found on chain alone (genesis memo)
+npx tsx scripts/e2e.mts withdraw <file>    # owner-withdraws a vault saved in .e2e-vaults/ (recovery after a crash)
 npx tsx scripts/e2e.mts sweep              # moves the agent's tool payments back from the provider addresses
 npx tsx scripts/e2e.mts refund <address>   # returns everything the test owner holds
 ```

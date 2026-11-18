@@ -58,7 +58,7 @@ is committed and imported by both the client and the server.
   payments, stale-UTXO retries, explicit `AGENT_MODE`, JSON logs `evt: payment|tool|agent_run`).
 - `src/lib/server/agent-wallet.ts`: `payFromVault` (serialized per vault, never pre-checks the budget, so the covenant
   is the enforcer). `paid-client.ts` handles the 402 → pay → retry flow. `agent-runner.ts` runs the AI SDK
-  `ToolLoopAgent`, or a scripted plan when no LLM key is set.
+  `ToolLoopAgent` when `AGENT_MODE=llm` with AI Gateway credentials, otherwise a scripted plan.
 - `src/app/api/*`: `config`, `chain` (Electrum proxy for the browser), `agent/register|run|attack`, `vault/status`, `tools/[tool]`.
 - `src/lib/client/*`: browser-only code. `wallet.ts` handles WizardConnect accounts, UTXO scan, genesis and withdraw signing.
   `chain.ts` holds the HTTP `NetworkProvider`.
@@ -79,7 +79,7 @@ is committed and imported by both the client and the server.
 - Shared payment code used by both the hosted agent and the MCP server: `src/lib/spend.ts` (`VaultSpender`),
   `src/lib/x402-client.ts`, `src/lib/connect-code.ts`. Vaults with `external: true` (agent index `0xffffffff`) belong
   to a user's own agent: Satchel serves their status but never drives them.
-- `scripts/e2e.mts`: full on-chain run with a local test owner key (`address`, `run`, `sweep`, `refund`). Chipnet by default; mainnet needs `NEXT_PUBLIC_BCH_NETWORK=mainnet E2E_ALLOW_MAINNET=1`.
+- `scripts/e2e.mts`: full on-chain run with a local test owner key (`address`, `run`, `recover`, `withdraw`, `sweep`, `refund`). Chipnet by default; mainnet needs `NEXT_PUBLIC_BCH_NETWORK=mainnet E2E_ALLOW_MAINNET=1`.
 
 ## Covenant invariants (do not break)
 
