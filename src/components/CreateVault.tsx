@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { DEFAULTS, NETWORK } from "@/lib/config";
 import { buildAllowlist } from "@/lib/allowlist";
-import { defaultAllowed, type ToolName } from "@/lib/tools";
+import { defaultAllowed, estimateFeePerCall, type ToolName } from "@/lib/tools";
 import { fmtSats, type SellerInfo, type ToolInfo } from "@/lib/client/agent";
 import type { CreateVaultInput } from "@/lib/client/wallet";
 import { CustomPayees, type PayeeRow } from "./CustomPayees";
@@ -18,7 +18,6 @@ const PERIODS = [
 export function CreateVault({
   tools,
   sellers,
-  feePerCall,
   walletBalance,
   externalAgentPk,
   busyStep,
@@ -27,7 +26,6 @@ export function CreateVault({
 }: {
   tools: ToolInfo[];
   sellers: SellerInfo[];
-  feePerCall: string;
   walletBalance: bigint | null;
   externalAgentPk: string | null;
   busyStep: string | null;
@@ -44,12 +42,16 @@ export function CreateVault({
 
   const isOn = (name: string) => selected[name] ?? defaultAllowed(name as ToolName, Boolean(externalAgentPk));
   const allowed = tools.filter((t) => isOn(t.name));
-  const chosenSellers = sellers.filter((_, i) => pickedSellers[i]);
+  // Sellers and custom payees can only be paid by the user's own (MCP) agent, so they exist only on external vaults.
+  const external = Boolean(externalAgentPk);
+  const chosenSellers = external ? sellers.filter((_, i) => pickedSellers[i]) : [];
+  const chosenCustom = external ? customRows : [];
   const payeeNames = [
     ...allowed.map((t) => t.name),
     ...chosenSellers.map((s) => s.name),
-    ...customRows.filter((r) => r.address.trim()).map((r) => r.label.trim() || "a custom payee"),
+    ...chosenCustom.filter((r) => r.address.trim()).map((r) => r.label.trim() || "a custom payee"),
   ];
+  const fee = estimateFeePerCall(payeeNames.length || 1).toString();
   const noun = PERIODS.find((p) => p.value === period)?.noun ?? "period";
   const busy = busyStep !== null;
 
@@ -59,7 +61,7 @@ export function CreateVault({
     const built = buildAllowlist({
       tools: allowed.map((t) => t.payTo),
       sellers: chosenSellers,
-      custom: customRows,
+      custom: chosenCustom,
       network: NETWORK,
       knownPayees: tools.map((t) => t.payTo),
     });
@@ -136,12 +138,12 @@ export function CreateVault({
               </span>
               <span className="flex flex-col items-end whitespace-nowrap font-mono text-[13px] text-body">
                 <span>{fmtSats(t.price)} sats / call</span>
-                <span className="text-xs text-muted">+ ~{fmtSats(feePerCall)} network fee</span>
+                <span className="text-xs text-muted">+ ~{fmtSats(fee)} network fee</span>
               </span>
             </label>
           ))}
         </fieldset>
-        {sellers.length > 0 && (
+        {external && sellers.length > 0 && (
           <fieldset className="flex flex-col gap-2.5">
             <legend className="mb-1 text-sm font-semibold">Suggested sellers</legend>
             <p className="text-[13px] text-muted">Other APIs that accept payment from a Satchel vault. Tick one to let your agent pay it.</p>
@@ -162,7 +164,7 @@ export function CreateVault({
             ))}
           </fieldset>
         )}
-        <CustomPayees rows={customRows} onChange={setCustomRows} field={field} />
+        {external && <CustomPayees rows={customRows} onChange={setCustomRows} field={field} />}
         <p className="text-[13px] text-muted">At most 8 payees in total.</p>
         {(formError || error) && (
           <div role="alert" className="rounded-[10px] bg-warn-soft px-3.5 py-2.5 text-sm text-warn-ink">
@@ -187,7 +189,7 @@ export function CreateVault({
             {payeeNames.length ? payeeNames.join(", ") : "nobody yet"}.
           </span>
           <span>
-            Each paid call also pays a Bitcoin Cash network fee of about {fmtSats(feePerCall)} sats, which counts toward
+            Each paid call also pays a Bitcoin Cash network fee of about {fmtSats(fee)} sats, which counts toward
             the cap.
           </span>
           <span>You can withdraw everything at any time. Only your wallet can do that.</span>

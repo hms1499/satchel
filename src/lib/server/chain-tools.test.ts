@@ -287,6 +287,15 @@ describe("bch-tx", () => {
     await expect(validateToolInput("bch-tx", new URLSearchParams({ txid: childId }), { rpc: electrum().rpc })).resolves.toBeUndefined();
   });
 
+  it("does not report a JSON-RPC 'method not found' as a missing transaction", async () => {
+    const rpc: Rpc = async () => {
+      throw new Error("Method not found");
+    };
+    const err = await validateToolInput("bch-tx", new URLSearchParams({ txid: childId }), { rpc }).catch((e) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).not.toBeInstanceOf(ToolInputError);
+  });
+
   it("does not report an Electrum outage as 'not found'", async () => {
     const down: Rpc = async () => {
       throw new Error("Electrum blockchain.transaction.get timed out");

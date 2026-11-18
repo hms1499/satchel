@@ -82,7 +82,7 @@ export function checkTxid(txid: string | null): string {
 }
 
 /** Fulcrum/bitcoind wording for a txid it does not know. */
-const isNotFound = (e: unknown) => /no such mempool or blockchain transaction|no transaction matching|not found/i.test(String(e));
+const isNotFound = (e: unknown) => /no such mempool or blockchain transaction|no transaction matching|(?:transaction|tx)\b.*\bnot found/i.test(String(e));
 
 /** Raw tx hex. An unknown txid is a 404; an Electrum failure stays a plain error (not the caller's fault). */
 export async function fetchTransaction(txid: string, rpc: Rpc): Promise<string> {

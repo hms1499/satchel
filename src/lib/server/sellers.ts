@@ -13,7 +13,7 @@ const SellerSchema = z.object({
 
 /**
  * Suggested sellers for the create form, from `SATCHEL_SELLERS` (a JSON array of `{ name, origin, payTo, description }`).
- * A malformed value throws when the server starts, naming the variable, instead of silently showing no sellers.
+ * A malformed value throws when it is first read (the first /api/config request), naming the variable, instead of silently showing no sellers.
  */
 export function loadSellers(env: Record<string, string | undefined> = process.env): SellerInfo[] {
   const raw = env.SATCHEL_SELLERS?.trim();

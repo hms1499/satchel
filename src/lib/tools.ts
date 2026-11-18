@@ -46,6 +46,11 @@ export const PAID_TOOLS = {
  */
 export const EST_FEE_PER_CALL = 700n;
 
+/** Each allowlist payee beyond 3 adds 32 bytes (32 sats at 1 sat/byte) to every payment. */
+export function estimateFeePerCall(payeeCount: number): bigint {
+  return EST_FEE_PER_CALL + 32n * BigInt(Math.max(0, payeeCount - 3));
+}
+
 export type ToolName = keyof typeof PAID_TOOLS;
 export const TOOL_NAMES = Object.keys(PAID_TOOLS) as ToolName[];
 export const PROVIDER_COUNT = 5;

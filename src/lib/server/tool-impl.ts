@@ -85,7 +85,7 @@ async function deepAnalysis(params: URLSearchParams) {
   if (!question) throw new ToolInputError("question is required");
   if (!toolUsesLlm()) {
     return {
-      analysis: `Demo mode (TOOL_LLM is off): received ${material.length} characters of material for the question "${question}".`,
+      analysis: `Demo mode (no live model configured): received ${material.length} characters of material for the question "${question}".`,
       model: "none",
     };
   }

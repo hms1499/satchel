@@ -31,7 +31,14 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export const fetchConfig = async (): Promise<AppConfig> => (await fetch("/api/config")).json();
+export async function fetchConfig(): Promise<AppConfig> {
+  const res = await fetch("/api/config");
+  if (!res.ok) {
+    const body = (await res.text().catch(() => "")).slice(0, 500);
+    throw new Error(`/api/config failed (${res.status})${body ? `: ${body}` : ""}`);
+  }
+  return res.json();
+}
 
 export const fetchStatus = (descriptor: VaultDescriptor) => postJson<VaultStatus>("/api/vault/status", { descriptor });
 
