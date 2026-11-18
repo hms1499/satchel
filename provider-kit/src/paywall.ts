@@ -119,6 +119,7 @@ export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route:
     const payment = await verifyPaymentHeader(header, {
       resource: route.resource,
       request: digest,
+      network: cfg.network,
       secret: cfg.secret,
       getTransaction,
       now: now(),

@@ -134,6 +134,7 @@ describe("verifyPaymentHeader", () => {
     resource: CHALLENGE_OPTS.resource,
     request: CHALLENGE_OPTS.request,
     secret: CHALLENGE_OPTS.secret,
+    network: CHALLENGE_OPTS.network,
     getTransaction,
   });
 

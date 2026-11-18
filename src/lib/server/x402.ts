@@ -24,7 +24,7 @@ export function createChallenge(resource: string, payTo: string, amount: bigint,
 
 /** Checks a challenge echoed back by a client. Returns an error message, or null when it is valid. */
 export function checkChallenge(challenge: Challenge | undefined, resource: string, request?: string): string | null {
-  return kit.checkChallenge(challenge, { resource, request, secret: providerSeed() });
+  return kit.checkChallenge(challenge, { resource, request, network: NETWORK, secret: providerSeed() });
 }
 
 /** Verifies an `X-Payment` header for one request (satchel-pay-server `verifyPaymentHeader`). */
@@ -37,6 +37,7 @@ export async function verifyPayment(
   const payment = await kit.verifyPaymentHeader(header, {
     resource,
     request,
+    network: NETWORK,
     secret: providerSeed(),
     getTransaction: (txid) => getProvider().getRawTransaction(txid),
   });

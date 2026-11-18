@@ -1,6 +1,6 @@
 /**
  * Best-effort, per-instance cache of paid results, keyed by the payment challenge nonce.
- * A paid header may be replayed for the identical request until it expires (idempotent retries, see challenge.ts);
+ * A paid header may be replayed for the identical request until it expires (safe retries, see challenge.ts);
  * the cache makes such replays return the stored response instead of running the handler (and an LLM) again.
  */
 export class ResultCache<T> {

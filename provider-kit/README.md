@@ -17,7 +17,7 @@ import { createPaywall, InputError, type PaidRoute } from "satchel-pay-server";
 
 const pay = createPaywall({ network: "chipnet", secret: process.env.SELLER_SECRET! });
 const route: PaidRoute = {
-  resource: "/api/price", name: "price", price: 500n, payTo: process.env.SELLER_PAYTO!, params: ["id"],
+  resource: "/api/price", name: "price", price: 500n, payTo: process.env.SELLER_PAY_TO!, params: ["id"],
   validate: (p) => { if (!p.get("id")) throw new InputError("id is required"); },
   handler: async (p) => ({ id: p.get("id"), usd: await lookupPrice(p.get("id")!) }),
 };
@@ -33,7 +33,7 @@ import { createPaywall, wellKnownResponse, type PaidRoute } from "satchel-pay-se
 
 const pay = createPaywall({ network: "chipnet", secret: process.env.SELLER_SECRET! });
 const route: PaidRoute = {
-  resource: "/api/price", name: "price", price: 500n, payTo: process.env.SELLER_PAYTO!, params: ["id"],
+  resource: "/api/price", name: "price", price: 500n, payTo: process.env.SELLER_PAY_TO!, params: ["id"],
   handler: async (p) => ({ id: p.get("id"), usd: await lookupPrice(p.get("id")!) }),
 };
 const app = new Hono();
@@ -49,7 +49,7 @@ app.get("/.well-known/satchel.json", () => wellKnownResponse({ name: "Price sell
 3. Without an `X-Payment` header: **402** with a signed challenge and `www-authenticate: BCH-SC402 realm="satchel"`.
 4. With a header: checks the challenge and the paying transaction. Any problem is a **402** `{ error }`.
 5. Runs `handler` once per payment and answers **200** `{ result, paidWith }`. A replay of the same paid header for the
-   same request gets the stored result. If `handler` throws, the answer is **502** (or the `InputError` status)
+   same request gets the stored result (the cache is per instance). If `handler` throws, the answer is **502** (or the `InputError` status)
    `{ error, paidWith }`, and the caller can retry with the same header without paying again.
 
 `wellKnownResponse` serves `/.well-known/satchel.json` (your catalog, CORS `*`) so Satchel agents can list your tools.
@@ -64,7 +64,7 @@ app.get("/.well-known/satchel.json", () => wellKnownResponse({ name: "Price sell
 3. The client retries the identical request with `X-Payment: base64(JSON { challenge, txid })`.
 4. The server checks the signature, the resource, the request binding and the expiry, then fetches the transaction and
    checks the payment output and the memo. No state is shared between instances: a paid header only ever buys the
-   identical request, so retries are idempotent on any number of serverless instances.
+   identical request, so a replay is safe on any instance; the handler may run again on a different instance.
 
 ## Risk: payments are accepted at 0-conf
 
@@ -76,7 +76,7 @@ for small amounts; do not sell anything per call that you could not afford to gi
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `SELLER_SECRET` | yes | At least 32 characters of randomness (`createPaywall` throws otherwise). Signs the challenges. Keep it server-side; rotating it invalidates open challenges. |
-| `SELLER_PAYTO` | yes | Your CashAddr (`bitcoincash:…` on mainnet, `bchtest:…` on chipnet). Payments go straight to it. |
+| `SELLER_PAY_TO` | yes | Your CashAddr (`bitcoincash:…` on mainnet, `bchtest:…` on chipnet). Payments go straight to it. |
 
 `createPaywall` options: `network` (`"mainnet"` or `"chipnet"`), `secret`, `getTransaction` (txid → raw tx hex; default:
 an Electrum client, `bch.imaginary.cash` on mainnet and `chipnet.bch.ninja` on chipnet), `cache` (a `ResultCache`;

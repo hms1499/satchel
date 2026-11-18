@@ -1,6 +1,6 @@
 import { base64ToBin, binToHex, binToUtf8, cashAddressToLockingBytecode, decodeTransaction, hexToBin, isBase64 } from "@bitauth/libauth";
 import { checkChallenge } from "./challenge";
-import { memoForChallenge, type Challenge } from "./protocol";
+import { memoForChallenge, type BchNetwork, type Challenge } from "./protocol";
 
 /**
  * Checks that a raw transaction pays a challenge: an output pays `payTo` at least `amount` sats, and its only OP_RETURN
@@ -45,12 +45,12 @@ function decodeHeader(header: string): { challenge?: Challenge; txid?: unknown }
  */
 export async function verifyPaymentHeader(
   header: string,
-  o: { resource: string; request: string; secret: string; getTransaction: (txid: string) => Promise<string>; now?: number },
+  o: { resource: string; request: string; network: BchNetwork; secret: string; getTransaction: (txid: string) => Promise<string>; now?: number },
 ): Promise<{ ok: true; txid: string; challenge: Challenge } | { ok: false; error: string }> {
   const parsed = decodeHeader(header);
   if (!parsed) return { ok: false, error: "malformed X-Payment header" };
   const { challenge, txid } = parsed;
-  const invalid = checkChallenge(challenge, { resource: o.resource, request: o.request, secret: o.secret, now: o.now });
+  const invalid = checkChallenge(challenge, { resource: o.resource, request: o.request, network: o.network, secret: o.secret, now: o.now });
   if (invalid || !challenge) return { ok: false, error: invalid ?? "invalid challenge signature" };
   if (typeof txid !== "string" || !/^[0-9a-f]{64}$/.test(txid)) return { ok: false, error: "invalid txid" };
 

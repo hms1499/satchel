@@ -3,8 +3,8 @@ import type { BchNetwork, Challenge } from "./protocol";
 
 /**
  * Each challenge is bound to one request (`request` = digest of the tool and its parameters). Within its expiry a paid
- * header can be replayed only for that identical request, which makes retries idempotent and needs no shared state:
- * it is correct on any number of serverless instances.
+ * header can be replayed only for that identical request, so a retry is safe on any number of serverless instances
+ * and needs no shared state. The handler may run again on a different instance (the result cache is per instance).
  */
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
 
@@ -47,12 +47,21 @@ export function createChallenge(o: {
   return { ...body, sig: signChallengeBody(body, o.secret) };
 }
 
+/** Compares two strings without returning early at the first differing character (equal lengths only). */
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 /** Checks a challenge echoed back by a client. Returns an error message, or null when it is valid. */
 export function checkChallenge(
   c: Challenge | undefined,
-  o: { resource: string; request?: string; secret: string; now?: number },
+  o: { resource: string; request?: string; network: BchNetwork; secret: string; now?: number },
 ): string | null {
-  if (!c?.sig || signChallengeBody(c, o.secret) !== c.sig) return "invalid challenge signature";
+  if (!c?.sig || !constantTimeEqual(signChallengeBody(c, o.secret), c.sig)) return "invalid challenge signature";
+  if (c.network !== o.network) return "challenge is for another network";
   if (c.resource !== o.resource) return "challenge is for a different resource";
   if (o.request !== undefined && c.request !== o.request) return "payment is for a different request";
   if ((o.now ?? Date.now()) > c.expires) return "challenge expired";

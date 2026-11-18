@@ -19,43 +19,43 @@ describe("checkChallenge", () => {
   it("accepts the challenge exactly as the 402 response serves it (with the extra `scheme` field)", () => {
     // Regression: the 402 body spreads `{ scheme: "bch-sc402", ...challenge }` into `accepts`, and clients echo it back.
     const served = { scheme: "bch-sc402", ...challenge };
-    expect(checkChallenge(served, { resource: RESOURCE, secret: SECRET })).toBeNull();
+    expect(checkChallenge(served, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBeNull();
   });
 
   it("accepts the bare challenge", () => {
-    expect(checkChallenge(challenge, { resource: RESOURCE, secret: SECRET })).toBeNull();
+    expect(checkChallenge(challenge, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBeNull();
   });
 
   it("rejects a missing challenge", () => {
-    expect(checkChallenge(undefined, { resource: RESOURCE, secret: SECRET })).toBe("invalid challenge signature");
+    expect(checkChallenge(undefined, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBe("invalid challenge signature");
   });
 
   it("rejects a challenge signed with another secret", () => {
-    expect(checkChallenge(challenge, { resource: RESOURCE, secret: SECRET + "x" })).toBe("invalid challenge signature");
+    expect(checkChallenge(challenge, { resource: RESOURCE, network: "chipnet", secret: SECRET + "x" })).toBe("invalid challenge signature");
   });
 
   it("rejects a tampered amount", () => {
-    expect(checkChallenge({ ...challenge, amount: "1" }, { resource: RESOURCE, secret: SECRET })).toBe("invalid challenge signature");
+    expect(checkChallenge({ ...challenge, amount: "1" }, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBe("invalid challenge signature");
   });
 
   it("rejects a tampered payTo", () => {
-    expect(checkChallenge({ ...challenge, payTo: "bchtest:qqattacker" }, { resource: RESOURCE, secret: SECRET })).toBe(
+    expect(checkChallenge({ ...challenge, payTo: "bchtest:qqattacker" }, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBe(
       "invalid challenge signature",
     );
   });
 
   it("rejects a tampered request binding", () => {
-    expect(checkChallenge({ ...challenge, request: "bb".repeat(32) }, { resource: RESOURCE, secret: SECRET })).toBe(
+    expect(checkChallenge({ ...challenge, request: "bb".repeat(32) }, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBe(
       "invalid challenge signature",
     );
   });
 
   it("rejects a challenge issued for another resource", () => {
-    expect(checkChallenge(challenge, { resource: "/api/tools/deep-analysis", secret: SECRET })).toBe("challenge is for a different resource");
+    expect(checkChallenge(challenge, { resource: "/api/tools/deep-analysis", network: "chipnet", secret: SECRET })).toBe("challenge is for a different resource");
   });
 
   it("rejects a payment for a different request", () => {
-    expect(checkChallenge(challenge, { resource: RESOURCE, request: "cc".repeat(32), secret: SECRET })).toBe(
+    expect(checkChallenge(challenge, { resource: RESOURCE, request: "cc".repeat(32), network: "chipnet", secret: SECRET })).toBe(
       "payment is for a different request",
     );
   });
@@ -64,14 +64,27 @@ describe("checkChallenge", () => {
     const old = { ...challenge, expires: Date.now() - 1 };
     // Expiry is covered by the signature, so an honest-but-old challenge must be re-signed to test it.
     const resigned = { ...old, sig: signChallengeBody(old, SECRET) };
-    expect(checkChallenge(resigned, { resource: RESOURCE, secret: SECRET })).toBe("challenge expired");
+    expect(checkChallenge(resigned, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBe("challenge expired");
+  });
+
+  it("rejects a challenge issued for another network", () => {
+    const other = issue({ network: "mainnet" });
+    expect(checkChallenge(other, { resource: RESOURCE, network: "chipnet", secret: SECRET })).toBe("challenge is for another network");
+    expect(checkChallenge(other, { resource: RESOURCE, network: "mainnet", secret: SECRET })).toBeNull();
+  });
+
+  it("rejects signatures of the wrong length or case without throwing", () => {
+    const o = { resource: RESOURCE, network: "chipnet" as const, secret: SECRET };
+    expect(checkChallenge({ ...challenge, sig: challenge.sig.slice(0, -1) }, o)).toBe("invalid challenge signature");
+    expect(checkChallenge({ ...challenge, sig: challenge.sig + "00" }, o)).toBe("invalid challenge signature");
+    expect(checkChallenge({ ...challenge, sig: challenge.sig.toUpperCase() }, o)).toBe("invalid challenge signature");
   });
 
   it("uses the injected clock for expiry", () => {
     const c = issue({ now: 1_000, ttlMs: 50 });
     expect(c.expires).toBe(1_050);
-    expect(checkChallenge(c, { resource: RESOURCE, secret: SECRET, now: 1_050 })).toBeNull();
-    expect(checkChallenge(c, { resource: RESOURCE, secret: SECRET, now: 1_051 })).toBe("challenge expired");
+    expect(checkChallenge(c, { resource: RESOURCE, network: "chipnet", secret: SECRET, now: 1_050 })).toBeNull();
+    expect(checkChallenge(c, { resource: RESOURCE, network: "chipnet", secret: SECRET, now: 1_051 })).toBe("challenge expired");
   });
 });
 
