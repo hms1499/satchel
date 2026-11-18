@@ -32,6 +32,10 @@ const CLOSED = "The vault is closed: its owner withdrew the funds. Run satchel_s
 const MIN_CHALLENGE_LIFETIME_MS = 30_000;
 /** Each seller's /.well-known/satchel.json gets this long before satchel_catalog reports it as failed. */
 const SELLER_TIMEOUT_MS = 5_000;
+/** Seller catalogs are untrusted input: read at most this much, and cap string and array sizes. */
+const MAX_CATALOG_BYTES = 256 * 1024;
+const MAX_CATALOG_TOOLS = 50;
+const MAX_TEXT = 500;
 const DUST_SATS = 546n;
 const MAX_MEMO_BYTES = 100;
 /** satchel_send memos go in the covenant's optional OP_RETURN output as "SATM" || utf8(memo). */
@@ -48,20 +52,48 @@ const sameAddress = (a: string, b: string) => {
 
 /** What a seller serves at /.well-known/satchel.json (satchel-pay-server's `wellKnownResponse`). Never trusted unchecked. */
 const WellKnownSchema = z.object({
-  name: z.string(),
+  name: z.string().max(MAX_TEXT),
   network: z.enum(["mainnet", "chipnet"]),
   tools: z.array(
     z.object({
-      name: z.string().min(1),
-      title: z.string(),
-      description: z.string(),
-      price: z.string().regex(/^\d+$/),
-      params: z.record(z.string(), z.string()),
-      payTo: z.string(),
-      endpoint: z.string().url(),
+      name: z.string().min(1).max(MAX_TEXT),
+      title: z.string().max(MAX_TEXT),
+      description: z.string().max(MAX_TEXT),
+      price: z.string().regex(/^\d+$/).max(20),
+      params: z.record(z.string().max(MAX_TEXT), z.string().max(MAX_TEXT)),
+      payTo: z.string().max(MAX_TEXT),
+      endpoint: z.string().url().max(2000),
     }),
-  ),
+  ).max(MAX_CATALOG_TOOLS),
 }) satisfies z.ZodType<{ name: string; network: BchNetwork; tools: CatalogEntry[] }>;
+
+/** The response body as JSON, refusing anything over `limit` bytes. */
+async function readJsonLimited(res: Response, limit: number): Promise<unknown> {
+  const tooLarge = () => new Error(`catalog is too large (over ${limit / 1024} KB)`);
+  if (Number(res.headers.get("content-length") ?? 0) > limit) throw tooLarge();
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    if (text.length > limit) throw tooLarge();
+    return JSON.parse(text);
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.length;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      throw tooLarge();
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) (all.set(c, at), (at += c.length));
+  return JSON.parse(new TextDecoder().decode(all));
+}
 
 type SellerCatalog = { origin: string; ok: boolean; error?: string; tools?: unknown[] };
 
@@ -118,12 +150,12 @@ export function createHandlers(deps: HandlerDeps) {
   };
 
   /** One seller's catalog. A seller that is down, slow or serves anything invalid is reported, never thrown. */
-  const sellerCatalog = async (origin: string, allowlist: string[]): Promise<SellerCatalog> => {
+  const sellerCatalog = async (origin: string, allowlist: string[], info?: ConnectInfo): Promise<SellerCatalog> => {
     let body: unknown;
     try {
       const res = await deps.fetch(`${origin}/.well-known/satchel.json`, { signal: AbortSignal.timeout(SELLER_TIMEOUT_MS) });
       if (!res.ok) return { origin, ok: false, error: `/.well-known/satchel.json answered HTTP ${res.status}` };
-      body = await res.json();
+      body = await readJsonLimited(res, MAX_CATALOG_BYTES);
     } catch (e) {
       const timedOut = e instanceof Error && e.name === "TimeoutError";
       return { origin, ok: false, error: timedOut ? `no answer within ${SELLER_TIMEOUT_MS / 1000} s` : `could not load /.well-known/satchel.json (${e instanceof Error ? e.message : String(e)})` };
@@ -134,7 +166,10 @@ export function createHandlers(deps: HandlerDeps) {
     return {
       origin,
       ok: true,
-      tools: parsed.data.tools.map((t) => ({ ...t, allowed: payable(allowlist, t.payTo, t.endpoint) })),
+      tools: parsed.data.tools.map((t) => {
+        const payeeLabel = info ? labelOf(info, t.payTo) : null;
+        return { ...t, allowed: payable(allowlist, t.payTo, t.endpoint), ...(payeeLabel ? { payeeLabel } : {}) };
+      }),
     };
   };
 
@@ -213,12 +248,22 @@ export function createHandlers(deps: HandlerDeps) {
       const info = loadVault(cfg);
       const allowlist = info?.params.allowlist ?? [];
       const satchelOrigin = new URL(cfg.satchelUrl).origin;
-      const [res, sellers] = await Promise.all([
-        deps.fetch(`${cfg.satchelUrl}/api/config`).catch(() => null),
-        Promise.all(cfg.payOrigins.filter((o) => o !== satchelOrigin).map((o) => sellerCatalog(o, allowlist))),
+      const loadConfig = async (): Promise<{ tools: { name: string; title: string; description: string; price: string; payTo: string; params?: Record<string, string> }[] } | string> => {
+        try {
+          const res = await deps.fetch(`${cfg.satchelUrl}/api/config`, { signal: AbortSignal.timeout(SELLER_TIMEOUT_MS) });
+          if (!res.ok) return `${cfg.satchelUrl}/api/config answered HTTP ${res.status}`;
+          return (await res.json()) as { tools: never[] };
+        } catch (e) {
+          const timedOut = e instanceof Error && e.name === "TimeoutError";
+          return timedOut ? `no answer from ${cfg.satchelUrl} within ${SELLER_TIMEOUT_MS / 1000} s` : `could not load the tool catalog from ${cfg.satchelUrl}`;
+        }
+      };
+      const [config, sellers] = await Promise.all([
+        loadConfig(),
+        Promise.all(cfg.payOrigins.filter((o) => o !== satchelOrigin).map((o) => sellerCatalog(o, allowlist, info ?? undefined))),
       ]);
-      if (!res?.ok) return fail(`Could not load the tool catalog from ${cfg.satchelUrl}.`);
-      const config = (await res.json()) as { tools: { name: string; title: string; description: string; price: string; payTo: string; params?: Record<string, string> }[] };
+      // Satchel being down must not hide the sellers' tools.
+      if (typeof config === "string") return ok({ tools: [], satchelError: config, sellers, howToCall: "satchel_pay_fetch with { url: endpoint, body: { ...tool parameters } }" });
       return ok({
         tools: config.tools.map((t) => {
           const endpoint = `${cfg.satchelUrl}/api/tools/${t.name}`;

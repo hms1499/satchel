@@ -460,3 +460,70 @@ describe("labels and sellers", () => {
     ]);
   });
 });
+
+describe("satchel_catalog hardening", () => {
+  const sellerTool = (name: string, payTo: string, extra: Record<string, unknown> = {}) => ({ name, title: name, description: "d", price: "700", params: {}, payTo, endpoint: `https://seller.test/api/${name}`, ...extra });
+  const withSeller = (base: typeof fetch, serve: () => Response | Promise<Response>) =>
+    (async (input: string | URL | Request, init?: RequestInit) => (String(input) === "https://seller.test/.well-known/satchel.json" ? serve() : base(input, init))) as typeof fetch;
+
+  it("still returns the seller results when Satchel's /api/config is down", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://seller.test" });
+    const { code } = await createVault({ allowlist: [provider3.address, alice] });
+    const base = fakeNetwork(provider).fetchFn;
+    const fetchFn = (async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === `${SATCHEL_URL}/api/config`) throw new TypeError("fetch failed");
+      if (String(input) === "https://seller.test/.well-known/satchel.json") return Response.json({ name: "S", network: "mainnet", tools: [sellerTool("weather", alice)] });
+      return base(input, init);
+    }) as typeof fetch;
+    const h = handlers(fetchFn);
+    await h.connect(code);
+    const r = await h.catalog();
+    expect(r.isError).toBeFalsy();
+    const out = json(r);
+    expect(out.tools).toEqual([]);
+    expect(out.satchelError).toEqual(expect.any(String));
+    expect(out.sellers[0]).toMatchObject({ origin: "https://seller.test", ok: true });
+  });
+
+  it("reports a non-OK /api/config as satchelError", async () => {
+    const { code } = await createVault();
+    const fetchFn = (async (input: string | URL | Request) =>
+      String(input) === `${SATCHEL_URL}/api/config` ? new Response("boom", { status: 500 }) : new Response("", { status: 404 })) as typeof fetch;
+    const h = handlers(fetchFn);
+    await h.connect(code).catch(() => undefined);
+    const out = json(await h.catalog());
+    expect(out.tools).toEqual([]);
+    expect(out.satchelError).toMatch(/500/);
+  });
+
+  it("turns an oversize seller body into that seller's error", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://seller.test" });
+    const { code } = await createVault();
+    const big = JSON.stringify({ name: "S", network: "mainnet", tools: [], pad: "x".repeat(300_000) });
+    const h = handlers(withSeller(fakeNetwork(provider).fetchFn, () => new Response(big)));
+    await h.connect(code);
+    const out = json(await h.catalog());
+    expect(out.sellers[0]).toMatchObject({ ok: false, error: expect.stringMatching(/too large/) });
+  });
+
+  it("rejects a seller catalog with too many tools or an overlong description", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://seller.test" });
+    const { code } = await createVault({ allowlist: [provider3.address, alice] });
+    const many = Array.from({ length: 51 }, (_, i) => sellerTool(`t${i}`, alice));
+    let h = handlers(withSeller(fakeNetwork(provider).fetchFn, () => Response.json({ name: "S", network: "mainnet", tools: many })));
+    await h.connect(code);
+    expect(json(await h.catalog()).sellers[0]).toMatchObject({ ok: false, error: expect.stringMatching(/not a valid/) });
+    h = handlers(withSeller(fakeNetwork(provider).fetchFn, () => Response.json({ name: "S", network: "mainnet", tools: [sellerTool("w", alice, { description: "y".repeat(501) })] })));
+    expect(json(await h.catalog()).sellers[0]).toMatchObject({ ok: false });
+  });
+
+  it("carries payeeLabel for a seller tool whose payTo has a label in the connect code", async () => {
+    cfg = loadConfig({ SATCHEL_HOME: cfg.home, SATCHEL_URL, SATCHEL_PAY_ORIGINS: "https://seller.test" });
+    const { code } = await createVault({ allowlist: [provider3.address, alice], labels: { [alice]: "Alice" } });
+    const h = handlers(withSeller(fakeNetwork(provider).fetchFn, () => Response.json({ name: "S", network: "mainnet", tools: [sellerTool("weather", alice), sellerTool("news", stranger.address)] })));
+    await h.connect(code);
+    const tools = json(await h.catalog()).sellers[0].tools;
+    expect(tools[0]).toMatchObject({ name: "weather", payeeLabel: "Alice" });
+    expect(tools[1].payeeLabel).toBeUndefined();
+  });
+});
