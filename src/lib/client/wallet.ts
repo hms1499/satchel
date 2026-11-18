@@ -9,6 +9,7 @@ import { EXTERNAL_AGENT_INDEX, paramsToDescriptorParams, type VaultDescriptor } 
 import { descriptorFromRecovered, encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
 import { toRelaySignRequest } from "../wc-relay";
 import { broadcast, getBlockHeight, getHistory, getTransactions, getUtxosFor, httpProvider } from "./chain";
+import { selectCoins } from "../coin-select";
 
 const PREFIX = NETWORK === "mainnet" ? "bitcoincash" : "bchtest";
 const PATHS = [
@@ -57,6 +58,9 @@ export async function walletFunds(manager: DappConnectionManager): Promise<Fundi
   const byAddress = await getUtxosFor(accounts.map((a) => a.address));
   return accounts.flatMap((account) => (byAddress[account.address] ?? []).filter((u) => !u.token).map((utxo) => ({ utxo, account })));
 }
+
+/** Progress steps that wait for the user to approve something in their wallet start with "Approve". */
+export const awaitsWallet = (step: string | null) => step?.startsWith("Approve") ?? false;
 
 export const sumSats = (list: FundingUtxo[]) => list.reduce((s, f) => s + f.utxo.satoshis, 0n);
 
@@ -140,10 +144,17 @@ export async function createVault(
     throw new Error(`Not enough BCH in the connected wallet: need about ${needed.toLocaleString()} sats, found ${sumSats(funds).toLocaleString()}.`);
   }
 
+  // Minting the state NFT needs a coin at output index 0. Without one, a first approval moves just enough
+  // coins into one (the rest of the wallet is untouched); after any Satchel withdrawal the wallet has one.
   let genesisInput = funds.find((f) => f.utxo.vout === 0);
+  const prepare = !genesisInput;
   if (!genesisInput) {
-    onStep("Approve the preparation transaction in your wallet…");
-    genesisInput = await consolidate(manager, funds, owner);
+    const picked = selectCoins(funds.map((f) => f.utxo.satoshis), needed);
+    if (!picked) {
+      throw new Error(`Not enough BCH in the connected wallet: need about ${needed.toLocaleString()} sats plus fees.`);
+    }
+    onStep("Approve 1 of 2 in your wallet: prepare your coins");
+    genesisInput = await consolidate(manager, picked.map((i) => funds[i]), owner);
     funds = [genesisInput];
   }
   // Use the vout-0 coin first, then add others until the deposit is covered.
@@ -165,7 +176,7 @@ export async function createVault(
     opReturn: encodeRecoveryMemo(params, agent.agentIndex, knownPayees),
   });
 
-  onStep("Approve the vault creation in your wallet…");
+  onStep(prepare ? "Approve 2 of 2 in your wallet: create the vault" : "Approve in your wallet: create the vault");
   const txid = await signAndBroadcast(
     manager,
     builder,

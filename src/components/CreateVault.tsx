@@ -5,9 +5,10 @@ import { DEFAULTS, NETWORK } from "@/lib/config";
 import { buildAllowlist } from "@/lib/allowlist";
 import { defaultAllowed, estimateFeePerCall, type ToolName } from "@/lib/tools";
 import { fmtSats, type SellerInfo, type ToolInfo } from "@/lib/client/agent";
-import type { CreateVaultInput } from "@/lib/client/wallet";
+import { awaitsWallet, type CreateVaultInput } from "@/lib/client/wallet";
 import { CustomPayees, type PayeeRow } from "./CustomPayees";
 import { Button, Card, Spinner } from "./ui";
+import { WalletWait } from "./WalletWait";
 
 const PERIODS = [
   { value: "6", label: "Per hour (6 blocks)", noun: "hour" },
@@ -180,6 +181,7 @@ export function CreateVault({
             "Create vault and deposit"
           )}
         </Button>
+        <WalletWait key={busyStep ?? ""} active={awaitsWallet(busyStep)} />
       </Card>
       <aside className="flex min-w-0 flex-[1_1_320px] flex-col gap-4">
         <div className="flex flex-col gap-2.5 rounded-[20px] bg-brand-soft p-6 text-[#1f3b30]">

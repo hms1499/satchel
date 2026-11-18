@@ -17,6 +17,7 @@ import {
   type VaultStatus,
 } from "@/lib/client/agent";
 import { Button, Card, CardTitle, Spinner } from "./ui";
+import { WalletWait } from "./WalletWait";
 
 interface LedgerRow {
   key: string;
@@ -189,6 +190,7 @@ export function Dashboard({
               "Withdraw everything"
             )}
           </Button>
+          <WalletWait active={withdrawing} />
         </Card>
 
         {!agentLocked && (

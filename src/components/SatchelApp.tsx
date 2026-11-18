@@ -227,7 +227,7 @@ export function SatchelApp() {
               </p>
               <ul className="list-disc pl-5 text-body">
                 <li>Works with WizardConnect wallets such as Cashonize.</li>
-                <li>You sign two transactions in total: create and withdraw.</li>
+                <li>You approve each transaction in your wallet: creating the vault (two approvals if your coins need preparing first) and withdrawing.</li>
               </ul>
               {wc.error && <p className="text-sm text-warn-ink">{wc.error}</p>}
               {restoring && (
