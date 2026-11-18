@@ -91,7 +91,10 @@ async function readJsonLimited(res: Response, limit: number): Promise<unknown> {
   }
   const all = new Uint8Array(total);
   let at = 0;
-  for (const c of chunks) (all.set(c, at), (at += c.length));
+  for (const c of chunks) {
+    all.set(c, at);
+    at += c.length;
+  }
   return JSON.parse(new TextDecoder().decode(all));
 }
 
