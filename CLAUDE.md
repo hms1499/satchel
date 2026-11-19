@@ -95,10 +95,11 @@ is committed and imported by both the client and the server.
 
 - Satoshi amounts are `bigint` everywhere (suffix `n`). Never use JS `number` for sats.
 - Default to **chipnet**. Use mainnet only for the final demo, and only with tiny amounts that can be recovered (rule of the hackathon).
-- Secrets (`AGENT_MASTER_SEED`, `PROVIDER_SEED`, `AI_GATEWAY_API_KEY`, the example seller's `SELLER_SECRET`) are server-only. Never import `src/lib/server/*`
+- Secrets (`AGENT_MASTER_SEED`, `PROVIDER_SEED`, `AI_GATEWAY_API_KEY`, `GROQ_API_KEY`, the example seller's `SELLER_SECRET`) are server-only. Never import `src/lib/server/*`
   from client components, and never expose secrets through `NEXT_PUBLIC_*`. See `.env.example`.
 - Server env beyond the secrets: `AGENT_MODE` (`scripted`|`llm`, the hosted agent), `TOOL_LLM` (`on` = live
-  `deep-analysis`) and `TOOL_MODEL`, `SATCHEL_SELLERS` (JSON array of suggested sellers; malformed fails `/api/config`).
+  `deep-analysis`) and `TOOL_MODEL`, `GROQ_API_KEY` (secret; when set, Groq replaces the AI Gateway: `GROQ_MODEL` for the
+  agent, `GROQ_TOOL_MODEL` for deep-analysis, see `src/lib/server/llm.ts`), `SATCHEL_SELLERS` (JSON array of suggested sellers; malformed fails `/api/config`).
   MCP env: `SATCHEL_NETWORK`, `SATCHEL_URL`, `SATCHEL_PAY_ORIGINS`, `SATCHEL_MAX_PRICE_SATS`, `SATCHEL_MAX_SEND_SATS`.
 - The server is stateless (no DB). The vault descriptor lives client-side (localStorage), and agent keys are re-derived from the seed.
 - UI copy is in English (international judges). Keep the flow obvious; a judge spends about 2 minutes per project.

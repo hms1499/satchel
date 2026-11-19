@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import { PAID_TOOLS, type ToolName } from "../tools";
-import { TOOL_MODEL, toolUsesLlm } from "./llm";
+import { toolModel, toolUsesLlm } from "./llm";
+import { logEvent } from "./log";
 import { InputError as ToolInputError } from "../../../provider-kit/src/index";
 import { addressInfo, checkAddress, checkTxid, electrumRpc, fetchTransaction, txInfo, type Rpc } from "./chain-tools";
 
@@ -89,13 +90,26 @@ async function deepAnalysis(params: URLSearchParams) {
       model: "none",
     };
   }
-  const { text } = await generateText({
-    model: TOOL_MODEL,
-    system:
-      "You are a concise research analyst. Answer in at most 120 words with 3-5 bullet points. Use only the provided material; say what is uncertain. Never give financial advice.",
-    prompt: `Question: ${question}\n\nMaterial:\n${material}`,
-  });
-  return { analysis: text, model: TOOL_MODEL };
+  const { model, name, call } = toolModel();
+  try {
+    const { text } = await generateText({
+      model,
+      ...call,
+      maxRetries: 3,
+      system:
+        "You are a concise research analyst. Answer in at most 120 words with 3-5 bullet points. Use only the provided material; say what is uncertain. Never give financial advice.",
+      prompt: `Question: ${question}\n\nMaterial:\n${material}`,
+    });
+    return { analysis: text, model: name };
+  } catch (e) {
+    // The caller has already paid for this call: answer without the model rather than fail it.
+    const why = e instanceof Error ? e.message.split("\n")[0].slice(0, 160) : "unknown error";
+    logEvent("tool", { tool: "deep-analysis", llmError: why });
+    return {
+      analysis: `The analyst model is unavailable right now (${why}). Material received for "${question}": ${material.slice(0, 600)}`,
+      model: "none",
+    };
+  }
 }
 
 const COIN_ID = /^[a-z0-9-]{2,60}$/;

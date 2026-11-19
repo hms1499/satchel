@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentUsesLlm, toolUsesLlm } from "./llm";
+import { agentModel, agentUsesLlm, toolModel, toolUsesLlm } from "./llm";
 
 describe("llm switches", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -29,5 +29,23 @@ describe("llm switches", () => {
     const live = await (await GET()).json();
     expect(live.deepAnalysis).toBe("live");
     expect(live.tools.find((t: { name: string }) => t.name === "deep-analysis").description).not.toContain("demo mode");
+  });
+
+  it("a Groq key counts as credentials", () => {
+    expect(agentUsesLlm({ AGENT_MODE: "llm", GROQ_API_KEY: "g" })).toBe(true);
+    expect(toolUsesLlm({ TOOL_LLM: "on", GROQ_API_KEY: "g" })).toBe(true);
+  });
+
+  it("prefers Groq when its key is set, otherwise the AI Gateway", () => {
+    const groq = agentModel({ GROQ_API_KEY: "g" });
+    expect(groq.name).toBe("groq/openai/gpt-oss-120b");
+    expect(typeof groq.model).toBe("object");
+    expect(groq.call).toMatchObject({ maxOutputTokens: 1200, providerOptions: { groq: { reasoningEffort: "low" } } });
+    // The tool runs on a different Groq model, so the two never share a per-model rate limit.
+    expect(toolModel({ GROQ_API_KEY: "g" }).name).toBe("groq/openai/gpt-oss-20b");
+    expect(agentModel({ GROQ_API_KEY: "g", GROQ_MODEL: "a/b" }).name).toBe("groq/a/b");
+    expect(toolModel({ GROQ_API_KEY: "g", GROQ_TOOL_MODEL: "c/d" }).name).toBe("groq/c/d");
+    expect(agentModel({ AI_GATEWAY_API_KEY: "k" })).toEqual({ model: "anthropic/claude-haiku-5.5", name: "anthropic/claude-haiku-5.5", call: {} });
+    expect(toolModel({ TOOL_MODEL: "x/y" })).toEqual({ model: "x/y", name: "x/y", call: {} });
   });
 });
