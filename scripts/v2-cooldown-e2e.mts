@@ -118,7 +118,7 @@ async function main() {
   // 4. New period with sequence 0: fails require(this.age >= periodBlocks) in script.
   const seq0 = await spend(coin, { overrideNewPeriod: true, overrideSequence: 0 });
   const r3 = await broadcast(seq0.builder.build());
-  check(Boolean(r3.error && /mandatory-script-verify-flag-failed/i.test(r3.error)), `new period with sequence 0 rejected in script: ${r3.error?.slice(0, 120)}`);
+  check(Boolean(r3.error && /script-verify-flag.*Locktime requirement not satisfied/i.test(r3.error)), `new period with sequence 0 rejected in script (CSV): ${r3.error?.slice(0, 120)}`);
 
   // 5. New period with sequence 1 on an unconfirmed coin: BIP68 makes it non-final. If a block confirmed the coin in
   // the meantime this step would be accepted (and spend the coin), so it only runs while the coin is unconfirmed.

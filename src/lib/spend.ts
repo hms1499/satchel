@@ -35,7 +35,7 @@ const STALE_RETRY_DELAYS_MS = process.env.NODE_ENV === "test" ? [1, 1, 1] : [800
 /** Node errors that mean "this input is already spent / unknown", i.e. our view of the vault UTXO was stale. */
 const STALE_INPUT_ERROR = /txn-mempool-conflict|missing-?inputs|missingorspent|inputs-missing|already spent|UTXO not found/i;
 /** Node errors that mean the scripts (the covenant) failed; also matches "non-mandatory-script-verify-flag". */
-const SCRIPT_ERROR = /mandatory-script-verify-flag-failed/i;
+const SCRIPT_ERROR = /mandatory-script-verify-flag/i;
 const BUSY = "The vault is busy: the previous payment is still propagating. Try again in a few seconds.";
 
 /**

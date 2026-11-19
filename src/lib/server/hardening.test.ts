@@ -225,6 +225,8 @@ describe("D2 payFromVault on a fresh instance with a lagging Electrum view", () 
     expect(classifyBroadcastError("the transaction was rejected by network rules. scriptsig-size", undefined)).toBe("other");
     expect(classifyBroadcastError("the transaction was rejected by network rules. txn-mempool-conflict (code 18)", undefined)).toBe("stale");
     expect(classifyBroadcastError("anything", "require(newSpent <= capPerPeriod);")).toBe("covenant");
+    // Real BCHN text for a failed CSV cooldown (v2 e2e, 2026-11-19): policy flags report it as "non-mandatory".
+    expect(classifyBroadcastError("the transaction was rejected by network rules. non-mandatory-script-verify-flag (Locktime requirement not satisfied) (code 64)", undefined)).toBe("covenant");
   });
 
   it("logs one structured line per payment", async () => {
