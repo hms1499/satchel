@@ -24,18 +24,28 @@ Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail) (
 
 ## Verified on mainnet
 
-One end-to-end run with real coins (`mcp/scripts/mainnet-e2e.mts`, 2026-11-18, `E2E OK`): a developer's own agent, through
-`satchel-pay-mcp`, pays Satchel and an independent seller from one vault.
+Two runs with real coins on covenant v2 (2026-11-19). First (`mcp/scripts/mainnet-e2e.mts`, `E2E OK`, against the
+production app): a developer's own agent, through `satchel-pay-mcp`, pays Satchel and an independent seller from one vault.
 
 | Step | What happened | Transaction |
 | --- | --- | --- |
-| Vault created | Covenant funded with a v2 recovery memo (seller and custom payee stored as hashes) | [`6d5d66cd…a99ea6`](https://explorer.salemkode.com/tx/6d5d66cd74c7b07807b56e8741c91b957bd89a6075c0635c0dd89fd524a99ea6) |
-| Direct payment | `satchel_send`: 1,000 sats to an allowlisted custom payee, with an on-chain memo | [`ed2bfd40…cfa515`](https://explorer.salemkode.com/tx/ed2bfd4008fa9fac29cd0d96fe4b208b2ef563f052835f67d453635a51cfa515) |
-| Paid API call | HTTP 402 → the agent pays 600 sats from the vault → Satchel's `bch-tx` answers | [`dac2b6f5…bd64d4`](https://explorer.salemkode.com/tx/dac2b6f5f40c87566aecf070dace7e0a3cb06333f8e90c6dbe6085ef88bd64d4) |
-| Third-party seller | 600 sats to the example seller, an independent API on `satchel-pay-server` | [`2ffc1c3c…a74b37`](https://explorer.salemkode.com/tx/2ffc1c3c3a82a201889132b2ddebdafae4840004062ed3a5ab81d1ca68a74b37) |
+| Vault created | Covenant funded with a v2 recovery memo (seller and custom payee stored as hashes) | [`78959aad…22d6ae`](https://explorer.salemkode.com/tx/78959aadfbf942a4bac390c829a01c4b555d41c4bc94e8b64e8eebeb2022d6ae) |
+| Direct payment | `satchel_send`: 1,000 sats to an allowlisted custom payee, with an on-chain memo | [`d01a66a1…6013ac`](https://explorer.salemkode.com/tx/d01a66a13fb81d2ecb9bc6c6b4570e48f8395c89ec12d32f05c1c0a39a6013ac) |
+| Paid API call | HTTP 402 → the agent pays 600 sats from the vault → Satchel's `bch-tx` answers | [`cffcedab…76388d`](https://explorer.salemkode.com/tx/cffcedab08be014d72bcbc11d582ff77bc0bff5d0440ec2b19762bf81e76388d) |
+| Third-party seller | 600 sats to the example seller, an independent API on `satchel-pay-server` | [`f03a01ec…f372b8`](https://explorer.salemkode.com/tx/f03a01ec70df911986779c638959d84806eb2718fafa98787856fc0451f372b8) |
 | Over the cap | The next payment would pass the 5,000-sat cap: rejected by every node at `require(newSpent <= cap)` | none, nothing spent |
 | Recovery | The vault is rebuilt from the owner's chain history alone (`findVaultsInTransactions`), allowlist included | (read-only) |
-| Owner withdraws | The owner key empties the vault and burns its state NFT | [`776945c2…f5e299`](https://explorer.salemkode.com/tx/776945c28c5889a1ae4c3b8f46f02515e3649dcd3c4da4ef681a4d93c8f5e299) |
+| Owner withdraws | The owner key empties the vault and burns its state NFT | [`e684898a…98dd71`](https://explorer.salemkode.com/tx/e684898a8d503537d3d73b2e8648e1d3e83159c6473d668531bc70197598dd71) |
+
+Second (`scripts/v2-cooldown-e2e.mts`): the sliding-window cap, with a cooldown of one block. Every rejection below is the
+node's own answer to a real broadcast.
+
+| Step | What happened | Transaction |
+| --- | --- | --- |
+| Over the cap | A second payment in the same period would pass the 3,000-sat cap: `mandatory-script-verify-flag-failed` | none, nothing spent |
+| New period, sequence 0 | Fails the covenant's `require(this.age >= periodBlocks)`: `Locktime requirement not satisfied` | none, nothing spent |
+| New period before the cooldown | The coin is not old enough yet, so the node refuses it: `non-BIP68-final` | none, nothing spent |
+| New period after the cooldown | One confirmation later the new period is accepted, and `spent` restarts at this payment | [`31fcd404…f5ecc6`](https://explorer.salemkode.com/tx/31fcd404435c7c49ff78e6e868a5b9aded5cc08a556249e0cacb145294f5ecc6) |
 
 ## Demo flow (about 2 minutes)
 
