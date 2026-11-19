@@ -6,8 +6,8 @@
 for APIs that charge per call, and send BCH to the payees you chose, from a
 [Satchel](https://github.com/hms1499/satchel) vault on Bitcoin Cash.
 
-- **The limit is enforced by consensus.** The vault is a BCH covenant: the agent can spend at most *X* sats per period
-  (miner fees included) and only to allowlisted payees. Every node rejects anything else — even if this server, your
+- **The limit is enforced by consensus.** The vault is a BCH covenant: the agent can spend at most *X* sats in any *N*-block window
+  (fees included; a new period starts only *N* blocks after the last payment) and only to allowlisted payees. Every node rejects anything else — even if this server, your
   machine or the agent is compromised.
 - **The agent key never leaves your machine.** It is generated locally (`~/.satchel/agent.json`, mode 0600). Satchel's
   servers never see it. Your own wallet keeps the owner key and can withdraw everything at any time.
@@ -84,7 +84,7 @@ ChatGPT only accepts remote MCP servers, so it is not supported (the agent key w
 |---|---|
 | `satchel_setup` | Creates the local agent key if needed; returns its public key and the vault-creation link |
 | `satchel_connect` | Connects the vault from its connect code (`satchel1:…`); one vault per network |
-| `satchel_status` | Balance, spent this period, remaining, when the budget resets, allowed payees with their labels |
+| `satchel_status` | Balance, spent this period, remaining, when the budget resets (`resetsAtHeight`, null until the last payment confirms; `resetRule: "sliding"`), allowed payees with their labels |
 | `satchel_catalog` | Paid APIs on Satchel and on each seller in `SATCHEL_PAY_ORIGINS`: endpoint, price, whether this vault may pay them; a seller that is down is reported, not fatal |
 | `satchel_pay_fetch` | Calls an endpoint; on HTTP 402 pays from the vault and retries; returns the result and the txid |
 | `satchel_send` | Sends BCH from the vault to an allowlisted payee, with an optional memo (≤ 100 UTF-8 bytes) on chain; returns the txid and the budget left |
@@ -130,8 +130,8 @@ and its origin to `SATCHEL_PAY_ORIGINS`.
 
 ## Security notes
 
-- Payments are capped by the covenant per period, so the most a compromised agent can lose is the remaining budget,
-  and only to the payees you allowed.
+- Payments are capped by the covenant: at most one cap in any *N*-block window, so that is the most a compromised agent
+  can spend, and only to the payees you allowed.
 - Sellers accept payments at 0-conf: the paying transaction is checked when it reaches the mempool, before it is
   confirmed. That is fine for the small per-call prices this is built for; do not treat it as final settlement for large
   amounts.

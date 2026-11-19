@@ -1,5 +1,6 @@
 "use client";
 
+import { parseWholeSats } from "@/lib/sats";
 import { useState } from "react";
 import { DEFAULTS, NETWORK } from "@/lib/config";
 import { buildAllowlist } from "@/lib/allowlist";
@@ -57,8 +58,9 @@ export function CreateVault({
   const busy = busyStep !== null;
 
   const submit = () => {
-    const d = BigInt(deposit || "0");
-    const c = BigInt(cap || "0");
+    const d = parseWholeSats(deposit);
+    const c = parseWholeSats(cap);
+    if (d === null || c === null) return setFormError("Use whole sats (no decimals).");
     const built = buildAllowlist({
       tools: allowed.map((t) => t.payTo),
       sellers: chosenSellers,
@@ -187,8 +189,8 @@ export function CreateVault({
         <div className="flex flex-col gap-2.5 rounded-[20px] bg-brand-soft p-6 text-[#1f3b30]">
           <span className="font-display text-[19px] font-semibold text-ink">What the covenant will enforce</span>
           <span>
-            Your agent can spend at most {fmtSats(cap || "0")} sats per {noun} (fees included), and only to{" "}
-            {payeeNames.length ? payeeNames.join(", ") : "nobody yet"}.
+            Your agent can spend at most {fmtSats(parseWholeSats(cap) ?? 0n)} sats in any {fmtSats(period)}-block window (about a {noun}, fees included), and only to{" "}
+            {payeeNames.length ? payeeNames.join(", ") : "nobody yet"}. A new period starts only {fmtSats(period)} blocks after the last payment.
           </span>
           <span>
             Each paid call also pays a Bitcoin Cash network fee of about {fmtSats(fee)} sats, which counts toward

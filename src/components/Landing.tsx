@@ -2,7 +2,7 @@ import { LINKS, MAINNET_PROOF, proofTxUrl } from "@/lib/proof";
 import { Button } from "./ui";
 
 const RULES = [
-  { title: "A cap per period", body: "The agent can spend at most X sats per period, fees included. The counter lives on-chain in a CashTokens NFT." },
+  { title: "A cap in any window", body: "The agent can spend at most X sats in any N-block window, fees included; a new period starts only N blocks after the last payment. The counter lives on-chain in a CashTokens NFT." },
   { title: "Allowlisted payees only", body: "Payments can only go to the API providers you approved. Any other address is rejected by every node." },
   { title: "You can always pull out", body: "Your wallet key can withdraw everything at any time. The agent key never can." },
 ];

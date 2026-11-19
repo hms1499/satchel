@@ -5,12 +5,13 @@
 Satchel is the **budget layer** for AI agents on Bitcoin Cash. You fund a covenant vault, and your agent pays on its own: for
 APIs over HTTP 402, or directly to people and services you approved. BCH consensus enforces the rules, not our server:
 
-- **A cap per period.** The agent can spend at most *X* sats every *N* blocks, miner fees included.
+- **A cap in any window.** The agent can spend at most *X* sats in any *N*-block window, fees included; a new period starts
+  only *N* blocks after the last payment (a CSV cooldown, so unused periods never add up).
 - **Allowlisted payees only.** Payments can only go to the payees you approved: Satchel's tools, third-party sellers, or any
   BCH address you add.
 - **You can always pull out.** The owner key can withdraw everything at any time.
 
-Every payment, by any route, goes through the same covenant. If the agent is prompt-injected, or our server is compromised, the worst it can do is spend the remaining budget on the payees you approved. Any transaction that breaks the rules is rejected by every node with `mandatory-script-verify-flag-failed`.
+Every payment, by any route, goes through the same covenant. If the agent is prompt-injected, or our server is compromised, the worst it can do is spend at most one cap per *N*-block window on the payees you approved. Any transaction that breaks the rules is rejected by every node with `mandatory-script-verify-flag-failed`.
 
 Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail) (Mainnet Track).
 
@@ -101,11 +102,12 @@ The vault is a single UTXO that carries the BCH and a **mutable CashTokens NFT**
 periodStart (4 bytes LE, block height) ‖ spent (8 bytes LE, sats)
 ```
 
-`spend(agentSig, allowlist, recipientIndex)`, signed by the agent:
+`spend(agentSig, allowlist, recipientIndex, newPeriod)`, signed by the agent:
 
 - exactly one input (the vault)
 - `outflow = input value − vault output value`, so fees count against the budget
-- if `tx.locktime ≥ periodStart + periodBlocks`, the period rolls over (enforced with CLTV); otherwise `spent` accumulates
+- `newPeriod` starts a new period only if `this.age ≥ periodBlocks` (CSV: the vault coin is at least `periodBlocks` old, so
+  two periods' payments are always that far apart); otherwise `spent` accumulates
 - `newSpent ≤ capPerPeriod`
 - output 0 recreates the vault: same bytecode, same category, honest new commitment
 - output 1 pays a recipient whose `sha256(lockingBytecode)` is in the allowlist (committed as `hash256` in the constructor)
