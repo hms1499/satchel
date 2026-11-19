@@ -42,14 +42,24 @@ export interface PaidRoute {
   handler: (p: URLSearchParams) => Promise<unknown>;
 }
 
+/**
+ * Where paid results are kept by challenge nonce, so a replayed paid header gets the stored response instead of
+ * running the handler again. Sync (the in-memory `ResultCache`) or async (a store shared across instances).
+ * A thrown or rejected call counts as a miss (get) or is ignored (set).
+ */
+export interface PaidResultStore<T> {
+  get(key: string): T | undefined | Promise<T | undefined>;
+  set(key: string, value: T, expires: number): void | Promise<void>;
+}
+
 export interface PaywallConfig {
   network: BchNetwork;
   /** At least 32 characters. Signs challenges (HMAC-SHA256). */
   secret: string;
   /** Raw tx hex by txid. Default: an Electrum client for `network`. */
   getTransaction?: (txid: string) => Promise<string>;
-  /** Paid results by challenge nonce. Default: in memory, per instance. */
-  cache?: ResultCache<unknown>;
+  /** Paid results by challenge nonce. Default: in memory, per instance (`ResultCache`). */
+  cache?: PaidResultStore<unknown>;
   now?: () => number;
   log?: (evt: Record<string, unknown>) => void;
 }
@@ -84,7 +94,21 @@ export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route:
     throw new Error("satchel-pay-server: secret must be a string of at least 32 characters (set SELLER_SECRET)");
   }
   const getTransaction = cfg.getTransaction ?? electrumTransactionFetcher(cfg.network);
-  const cache = cfg.cache ?? new ResultCache<unknown>();
+  const cache: PaidResultStore<unknown> = cfg.cache ?? new ResultCache<unknown>();
+  const cacheGet = async (key: string) => {
+    try {
+      return await cache.get(key);
+    } catch {
+      return undefined;
+    }
+  };
+  const cacheSet = async (key: string, value: unknown, expires: number) => {
+    try {
+      await cache.set(key, value, expires);
+    } catch {
+      // best effort: the result is still returned to the caller
+    }
+  };
   const now = cfg.now ?? Date.now;
   const log = cfg.log ?? (() => {});
 
@@ -139,7 +163,7 @@ export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route:
     const { challenge: paid, txid: paidWith } = payment;
 
     // A replay of a paid request (retry) gets the stored response; the handler runs once per payment.
-    const cached = cache.get(paid.nonce);
+    const cached = await cacheGet(paid.nonce);
     if (cached) {
       log({ evt: "tool", tool: route.name, status: 200, txid: paidWith, cached: true, ms: now() - started });
       return json(cached);
@@ -147,7 +171,7 @@ export function createPaywall(cfg: PaywallConfig): { handle(req: Request, route:
 
     try {
       const result = await route.handler(params);
-      cache.set(paid.nonce, { result, paidWith }, paid.expires);
+      await cacheSet(paid.nonce, { result, paidWith }, paid.expires);
       log({ evt: "tool", tool: route.name, status: 200, txid: paidWith, ms: now() - started });
       return json({ result, paidWith });
     } catch (e) {

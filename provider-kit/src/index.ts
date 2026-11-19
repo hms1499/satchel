@@ -3,4 +3,4 @@ export { signChallengeBody, requestDigest, createChallenge, checkChallenge } fro
 export { verifyPaymentHeader, verifyPaymentTx } from "./verify";
 export { ResultCache } from "./cache";
 export { electrumTransactionFetcher } from "./electrum";
-export { createPaywall, InputError, MIN_PRICE_SATS, wellKnownResponse, type PaidRoute, type PaywallConfig, type CatalogEntry } from "./paywall";
+export { createPaywall, InputError, MIN_PRICE_SATS, wellKnownResponse, type PaidRoute, type PaywallConfig, type CatalogEntry, type PaidResultStore } from "./paywall";

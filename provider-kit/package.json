@@ -1,6 +1,6 @@
 {
   "name": "satchel-pay-server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Charge AI agents per API call in Bitcoin Cash (bch-sc402, HTTP 402): signed payment challenges, 0-conf payment verification and safe paid retries for any Fetch API server.",
   "type": "module",
   "main": "dist/index.js",

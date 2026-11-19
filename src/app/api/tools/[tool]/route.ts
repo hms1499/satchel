@@ -40,7 +40,7 @@ function paidRoute(name: ToolName): PaidRoute {
 
 async function handle(request: Request, ctx: { params: Promise<{ tool: string }> }) {
   const { tool } = await ctx.params;
-  if (!(tool in PAID_TOOLS)) return Response.json({ error: "unknown tool" }, { status: 404 });
+  if (!Object.hasOwn(PAID_TOOLS, tool)) return Response.json({ error: "unknown tool" }, { status: 404 });
   return getPaywall().handle(request, paidRoute(tool as ToolName));
 }
 

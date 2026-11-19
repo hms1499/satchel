@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { binToHex, cashAddressToLockingBytecode, encodeTransaction, hexToBin } from "@bitauth/libauth";
-import { createPaywall, InputError, MIN_PRICE_SATS, wellKnownResponse, type PaidRoute } from "./paywall";
+import { createPaywall, InputError, MIN_PRICE_SATS, wellKnownResponse, type PaidResultStore, type PaidRoute } from "./paywall";
+import { ResultCache } from "./cache";
 import { memoForChallenge, type Challenge } from "./protocol";
 import { electrumTransactionFetcher } from "./electrum";
 
@@ -32,7 +33,7 @@ function payingTx(c: Challenge): string {
 
 const header = (challenge: Challenge, txid = TXID) => Buffer.from(JSON.stringify({ challenge, txid })).toString("base64");
 
-function setup(overrides: Partial<PaidRoute> = {}) {
+function setup(overrides: Partial<PaidRoute> = {}, cache?: PaidResultStore<unknown>) {
   const txs = new Map<string, string>();
   const getTransaction = vi.fn(async (txid: string) => {
     const hex = txs.get(txid);
@@ -41,7 +42,7 @@ function setup(overrides: Partial<PaidRoute> = {}) {
   });
   const handler = vi.fn(async (p: URLSearchParams) => ({ price: 42, id: p.get("id") }));
   const route: PaidRoute = { resource: "/api/price", name: "price", price: 600n, payTo: PAY_TO, params: ["id"], handler, ...overrides };
-  const paywall = createPaywall({ network: "chipnet", secret: SECRET, getTransaction, now: () => NOW });
+  const paywall = createPaywall({ network: "chipnet", secret: SECRET, getTransaction, now: () => NOW, cache });
 
   /** Asks for a 402, pays it with a real tx the stub can serve, and returns the X-Payment header. */
   async function pay(query = "id=bitcoin-cash"): Promise<{ header: string; challenge: Challenge }> {
@@ -224,5 +225,44 @@ describe("wellKnownResponse", () => {
     expect(res.headers.get("access-control-allow-origin")).toBe("*");
     expect(res.headers.get("content-type")).toMatch(/application\/json/);
     expect(await res.json()).toEqual(info);
+  });
+});
+
+describe("paid-result store (0.2.0)", () => {
+  function asyncStore(): PaidResultStore<unknown> {
+    const m = new Map<string, unknown>();
+    return { get: async (k) => m.get(k), set: async (k, v) => void m.set(k, v) };
+  }
+
+  it("uses an async cache: a replay on another instance returns the stored result without running the handler", async () => {
+    const store = asyncStore();
+    const a = setup({}, store);
+    const { header: paid } = await a.pay();
+    expect((await a.get("id=bitcoin-cash", paid)).status).toBe(200);
+    // A second instance: its own paywall and handler, the same chain view and the same shared store.
+    const handlerB = vi.fn(async () => ({ price: 0 }));
+    const b = createPaywall({ network: "chipnet", secret: SECRET, getTransaction: a.getTransaction, now: () => NOW, cache: store });
+    const replay = await b.handle(new Request(`${URL_BASE}?id=bitcoin-cash`, { headers: { "x-payment": paid } }), { ...a.route, handler: handlerB });
+    expect(replay.status).toBe(200);
+    expect(((await replay.json()) as { result: unknown }).result).toEqual({ price: 42, id: "bitcoin-cash" });
+    expect(handlerB).not.toHaveBeenCalled();
+    expect(a.handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("still accepts the 0.1 ResultCache", async () => {
+    const { pay, get, handler } = setup({}, new ResultCache<unknown>());
+    const { header: paid } = await pay();
+    expect((await get("id=bitcoin-cash", paid)).status).toBe(200);
+    expect((await get("id=bitcoin-cash", paid)).status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("a cache whose get throws is a miss, not a 500", async () => {
+    const broken: PaidResultStore<unknown> = { get: () => Promise.reject(new Error("cache down")), set: () => Promise.reject(new Error("cache down")) };
+    const { pay, get, handler } = setup({}, broken);
+    const { header: paid } = await pay();
+    const res = await get("id=bitcoin-cash", paid);
+    expect(res.status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 });

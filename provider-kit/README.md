@@ -49,7 +49,7 @@ app.get("/.well-known/satchel.json", () => wellKnownResponse({ name: "Price sell
 3. Without an `X-Payment` header: **402** with a signed challenge and `www-authenticate: BCH-SC402 realm="satchel"`.
 4. With a header: checks the challenge and the paying transaction. Any problem is a **402** `{ error }`.
 5. Runs `handler` once per payment and answers **200** `{ result, paidWith }`. A replay of the same paid header for the
-   same request gets the stored result (the cache is per instance). If `handler` throws, the answer is **502** (or the `InputError` status)
+   same request gets the stored result (per instance by default; pass a shared `cache` to cover every instance). If `handler` throws, the answer is **502** (or the `InputError` status)
    `{ error, paidWith }`, and the caller can retry with the same header without paying again.
 
 `wellKnownResponse` serves `/.well-known/satchel.json` (your catalog, CORS `*`) so Satchel agents can list your tools.
@@ -79,8 +79,10 @@ for small amounts; do not sell anything per call that you could not afford to gi
 | `SELLER_PAY_TO` | yes | Your CashAddr (`bitcoincash:…` on mainnet, `bchtest:…` on chipnet). Payments go straight to it. |
 
 `createPaywall` options: `network` (`"mainnet"` or `"chipnet"`), `secret`, `getTransaction` (txid → raw tx hex; default:
-an Electrum client, `bch.imaginary.cash` on mainnet and `chipnet.bch.ninja` on chipnet), `cache` (a `ResultCache`;
-default: in memory, per instance), `now` and `log` (receives one JSON event per paid call).
+an Electrum client with failover across `ELECTRUM_HOSTS`), `cache` (any `PaidResultStore`: `get(key)` and
+`set(key, value, expires)`, sync or async, so a store shared across serverless instances such as Redis or Vercel Runtime
+Cache works; a failing store counts as a miss; default: an in-memory `ResultCache`, per instance), `now` and `log`
+(receives one JSON event per paid call).
 
 **Cloudflare Workers** cannot keep the default Electrum client's connection open between requests (no raw or long-lived
 sockets), so pass your own `getTransaction`, for example a `fetch` to a block explorer or indexer API that returns the
