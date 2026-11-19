@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { agentModel, agentUsesLlm, toolModel, toolUsesLlm } from "./llm";
+import { agentModel, agentUsesLlm, budgetedFetch, LlmBudgetError, toolModel, toolUsesLlm } from "./llm";
 
 describe("llm switches", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -47,5 +47,57 @@ describe("llm switches", () => {
     expect(toolModel({ GROQ_API_KEY: "g", GROQ_TOOL_MODEL: "c/d" }).name).toBe("groq/c/d");
     expect(agentModel({ AI_GATEWAY_API_KEY: "k" })).toEqual({ model: "anthropic/claude-haiku-5.5", name: "anthropic/claude-haiku-5.5", call: {} });
     expect(toolModel({ TOOL_MODEL: "x/y" })).toEqual({ model: "x/y", name: "x/y", call: {} });
+  });
+});
+
+describe("budgetedFetch", () => {
+  const ok = () => new Response("{}", { status: 200 });
+  const limited = (retryAfterS: number) => new Response("rate limited", { status: 429, headers: { "retry-after": String(retryAfterS) } });
+
+  it("waits out a short 429 and retries", async () => {
+    const base = vi.fn().mockResolvedValueOnce(limited(0.05)).mockResolvedValueOnce(ok());
+    const f = budgetedFetch(() => Date.now() + 10_000, {}, base);
+    expect((await f("https://x", { method: "POST", body: "{}" })).status).toBe(200);
+    expect(base).toHaveBeenCalledTimes(2);
+  });
+
+  it("returns a 429 at once when its retry-after does not fit the budget", async () => {
+    const base = vi.fn().mockResolvedValue(limited(30));
+    const t0 = Date.now();
+    const res = await budgetedFetch(() => Date.now() + 60_000, {}, base)("https://x");
+    expect(res.status).toBe(429);
+    expect(base).toHaveBeenCalledTimes(1);
+    expect(Date.now() - t0).toBeLessThan(500);
+  });
+
+  it("gives up after maxAttempts requests", async () => {
+    const base = vi.fn().mockImplementation(async () => limited(0.01));
+    const res = await budgetedFetch(() => Date.now() + 10_000, { maxAttempts: 2 }, base)("https://x");
+    expect(res.status).toBe(429);
+    expect(base).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts a hanging request at the deadline with LlmBudgetError", async () => {
+    const hang = (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_r, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)));
+    const end = Date.now() + 1_300;
+    const t0 = Date.now();
+    await expect(budgetedFetch(() => end, {}, hang as typeof fetch)("https://x")).rejects.toBeInstanceOf(LlmBudgetError);
+    expect(Date.now() - t0).toBeLessThan(2_000);
+  });
+
+  it("refuses to start a request once the budget is used up", async () => {
+    const base = vi.fn();
+    await expect(budgetedFetch(() => Date.now() + 500, {}, base)("https://x")).rejects.toBeInstanceOf(LlmBudgetError);
+    expect(base).not.toHaveBeenCalled();
+  });
+
+  it("passes a caller abort through unchanged", async () => {
+    const ctrl = new AbortController();
+    const hang = (_: unknown, init?: RequestInit) =>
+      new Promise<Response>((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("caller aborted"))));
+    const p = budgetedFetch(() => Date.now() + 10_000, {}, hang as typeof fetch)("https://x", { signal: ctrl.signal });
+    ctrl.abort();
+    await expect(p).rejects.toThrow("caller aborted");
   });
 });

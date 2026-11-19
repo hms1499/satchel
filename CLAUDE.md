@@ -58,7 +58,9 @@ is committed and imported by both the client and the server.
   payments, stale-UTXO retries, explicit `AGENT_MODE`, JSON logs `evt: payment|tool|agent_run`).
 - `src/lib/server/agent-wallet.ts`: `payFromVault` (serialized per vault, never pre-checks the budget, so the covenant
   is the enforcer). `paid-client.ts` handles the 402 → pay → retry flow. `agent-runner.ts` runs the AI SDK
-  `ToolLoopAgent` when `AGENT_MODE=llm` with AI Gateway credentials, otherwise a scripted plan.
+  `ToolLoopAgent` when `AGENT_MODE=llm` with credentials, otherwise a scripted plan. LLM time budgets (route maxDuration 120 s):
+  first payment within `FIRST_PAYMENT_MS` or fall back to the scripted plan, no new model request after `LLM_TOTAL_MS`,
+  deep-analysis 20 s; Groq requests go through `budgetedFetch` (llm.ts) with SDK retries off.
 - `src/app/api/*`: `config`, `chain` (Electrum proxy for the browser), `agent/register|run|attack`, `vault/status`, `tools/[tool]`.
 - `src/lib/client/*`: browser-only code. `wallet.ts` handles WizardConnect accounts, UTXO scan, genesis and withdraw signing.
   `chain.ts` holds the HTTP `NetworkProvider`.

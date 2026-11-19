@@ -80,6 +80,8 @@ async function webReader(params: URLSearchParams) {
   return { url: url.toString(), title, text };
 }
 
+const DEEP_ANALYSIS_LLM_MS = 20_000;
+
 async function deepAnalysis(params: URLSearchParams) {
   const question = (params.get("question") ?? "").slice(0, 500);
   const material = (params.get("material") ?? "").slice(0, 6000);
@@ -90,12 +92,16 @@ async function deepAnalysis(params: URLSearchParams) {
       model: "none",
     };
   }
-  const { model, name, call } = toolModel();
+  // A paid call must answer well inside the agent's request: bound the model to DEEP_ANALYSIS_LLM_MS, no SDK retries
+  // (budgetedFetch retries short rate-limit waits itself; the AI Gateway path uses the SDK's total timeout).
+  const started = Date.now();
+  const { model, name, call } = toolModel(process.env, () => started + DEEP_ANALYSIS_LLM_MS);
   try {
     const { text } = await generateText({
       model,
       ...call,
-      maxRetries: 3,
+      maxRetries: 0,
+      timeout: { totalMs: DEEP_ANALYSIS_LLM_MS },
       system:
         "You are a concise research analyst. Answer in at most 120 words with 3-5 bullet points. Use only the provided material; say what is uncertain. Never give financial advice.",
       prompt: `Question: ${question}\n\nMaterial:\n${material}`,

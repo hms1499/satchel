@@ -49,12 +49,15 @@ Be thorough: fetch the price of each coin you discuss separately, read at least 
 If a payment is refused, do not retry it: explain that the vault's budget for this period is exhausted and
 answer with what you already have. Keep the final answer under 120 words. Never give financial advice.`;
 
-/** Scripted plan used when no LLM is configured, so the demo always works. */
-async function runScripted(prompt: string, tools: ReturnType<typeof makeTools>, emit: Emit) {
+/** Scripted plan used when no LLM is configured (or it failed before paying for anything), so the demo always works. */
+async function runScripted(prompt: string, tools: ReturnType<typeof makeTools>, emit: Emit, fallback = false) {
   const exec = <T,>(t: { execute?: (input: T, opts: never) => unknown }, input: T) =>
     Promise.resolve(t.execute!(input, {} as never)) as Promise<Record<string, unknown>>;
   const facts: string[] = [];
-  emit({ type: "thought", text: "Demo mode (no LLM configured): running a fixed research plan." });
+  emit({
+    type: "thought",
+    text: fallback ? "Running the fixed research plan instead." : "Demo mode (no LLM configured): running a fixed research plan.",
+  });
   emit({ type: "thought", text: "First, live prices for BCH and ETH." });
   for (const id of ["bitcoin-cash", "ethereum"]) {
     const r = await exec(tools.crypto_price, { id });
@@ -87,7 +90,16 @@ function finish(facts: string[], emit: Emit, error?: string) {
   });
 }
 
+/**
+ * Time budgets (the route's maxDuration is 120 s). The model must start paying within FIRST_PAYMENT_MS, or the run
+ * switches to the scripted plan while there is still time for it. After the first payment, no new model request starts
+ * past LLM_TOTAL_MS; a tool already running (a payment) always finishes. Each deep-analysis call is bounded separately.
+ */
+export const FIRST_PAYMENT_MS = 30_000;
+export const LLM_TOTAL_MS = 75_000;
+
 export async function runAgent(origin: string, opened: Opened, prompt: string, emitEvent: Emit) {
+  const started = Date.now();
   let paid = 0;
   const emit: Emit = (e) => {
     if (e.type === "paid") paid++;
@@ -96,9 +108,10 @@ export async function runAgent(origin: string, opened: Opened, prompt: string, e
   const tools = makeTools(origin, opened, emit);
   if (!agentUsesLlm()) return runScripted(prompt, tools, emit);
 
+  const deadline = () => started + (paid > 0 ? LLM_TOTAL_MS : FIRST_PAYMENT_MS);
   const agent = new ToolLoopAgent({
-    ...(({ model, call }) => ({ model, ...call }))(agentModel()),
-    maxRetries: 3, // waits out a free-tier rate limit (the SDK honours retry-after up to 60 s)
+    ...(({ model, call }) => ({ model, ...call }))(agentModel(process.env, deadline)),
+    maxRetries: 0, // budgetedFetch retries short rate-limit waits itself; SDK retries could wait 60 s each
     instructions: INSTRUCTIONS,
     tools,
     stopWhen: isStepCount(10),
@@ -115,7 +128,7 @@ export async function runAgent(origin: string, opened: Opened, prompt: string, e
       return;
     }
     emit({ type: "status", text: `The language model is unavailable (${why}); falling back to the scripted research plan.` });
-    return runScripted(prompt, tools, emit);
+    return runScripted(prompt, tools, emit, true);
   }
   emit({ type: "final", text: text || "(no answer)" });
 }
