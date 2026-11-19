@@ -45,7 +45,7 @@ describe("mergeVaults", () => {
 });
 
 describe("routeVaults", () => {
-  const base = { scan: "done" as const, open: [] as OpenVault[], wantsCreate: false, chosen: null };
+  const base = { scan: "done" as const, open: [] as OpenVault[], wantsCreate: false, chosen: null, browsing: false };
   it("scan running: no create form yet", () => expect(routeVaults({ ...base, scan: "pending" })).toEqual({ screen: "scanning" }));
   it("scan failed", () => expect(routeVaults({ ...base, scan: "failed" })).toEqual({ screen: "scan-failed" }));
   it("no open vault: create", () => expect(routeVaults(base)).toEqual({ screen: "create" }));
@@ -57,4 +57,7 @@ describe("routeVaults", () => {
     expect(routeVaults({ ...base, open: [open("2"), open("3")], chosen: vault("3") })).toEqual({ screen: "dashboard", vault: open("3") }));
   it("a chosen vault that is no longer open is ignored", () =>
     expect(routeVaults({ ...base, open: [open("2"), open("3")], chosen: vault("4") })).toEqual({ screen: "list" }));
+  it("browsing (← Your vaults) shows the list even with one vault", () =>
+    expect(routeVaults({ ...base, open: [open("2")], browsing: true })).toEqual({ screen: "list" }));
+  it("browsing with no open vault: create", () => expect(routeVaults({ ...base, browsing: true })).toEqual({ screen: "create" }));
 });

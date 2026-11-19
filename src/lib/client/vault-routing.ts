@@ -37,13 +37,20 @@ export type Route =
   | { screen: "scan-failed" };
 
 /** Which screen to show once the wallet is connected (the table in the "Your vaults" design). */
-export function routeVaults(o: { scan: "pending" | "done" | "failed"; open: OpenVault[]; wantsCreate: boolean; chosen: VaultDescriptor | null }): Route {
+export function routeVaults(o: {
+  scan: "pending" | "done" | "failed";
+  open: OpenVault[];
+  wantsCreate: boolean;
+  chosen: VaultDescriptor | null;
+  /** The user asked for the list ("← Your vaults"): no auto-open of a single vault. */
+  browsing?: boolean;
+}): Route {
   const chosen = o.chosen ? o.open.find((v) => sameVault(v.descriptor, o.chosen!)) : undefined;
   if (chosen) return { screen: "dashboard", vault: chosen };
   if (o.wantsCreate) return { screen: "create" };
   if (o.scan === "pending") return { screen: "scanning" };
   if (o.scan === "failed") return { screen: "scan-failed" };
   if (o.open.length === 0) return { screen: "create" };
-  if (o.open.length === 1) return { screen: "dashboard", vault: o.open[0] };
+  if (o.open.length === 1 && !o.browsing) return { screen: "dashboard", vault: o.open[0] };
   return { screen: "list" };
 }
