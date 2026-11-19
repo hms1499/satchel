@@ -70,9 +70,9 @@ describe("D1 x402: payments are bound to one request and idempotent", () => {
 describe("D1 replays of a paid request are served from a cache, not recomputed", () => {
   it("stores and returns a successful result by challenge nonce", async () => {
     const { paidResults } = await import("./result-cache");
-    expect(paidResults.get("n1")).toBeUndefined();
-    paidResults.set("n1", { result: { a: 1 }, paidWith: "tx" }, Date.now() + 60_000);
-    expect(paidResults.get("n1")).toEqual({ result: { a: 1 }, paidWith: "tx" });
+    expect(await paidResults.get("n1")).toBeUndefined();
+    await paidResults.set("n1", { result: { a: 1 }, paidWith: "tx" }, Date.now() + 60_000);
+    expect(await paidResults.get("n1")).toEqual({ result: { a: 1 }, paidWith: "tx" });
   });
 
   it("forgets expired entries and stays bounded", async () => {
