@@ -266,7 +266,7 @@ describe("closed vault and status", () => {
     const { code, contract } = await createVault();
     const h = handlers(fakeNetwork(provider).fetchFn);
     await h.connect(code);
-    expect(json(await h.status())).toMatchObject({ balance: "20000", remaining: "8000" });
+    expect(json(await h.status())).toMatchObject({ balance: "20000", remaining: "8000", resetsAtHeight: null, resetRule: "sliding" });
     const vaultUtxo = (await findVaultUtxo(contract))!;
     await buildWithdraw({ contract, vaultUtxo, to: owner.address, ownerSigner: owner.signer }).send();
     for (const r of [await h.status(), await h.payFetch({ url: TOOL_URL })]) {

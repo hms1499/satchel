@@ -5,6 +5,7 @@ import { decodeState, getVaultContract, remainingBudget, type VaultParams } from
 import { VaultSpender, type PaymentOutcome, type SpendTarget } from "../spend";
 import { agentKey, attackerAddress, verifyAccess } from "./keys";
 import { getProvider } from "./electrum";
+import { coinHeight } from "../coin-height";
 import { logEvent } from "./log";
 
 export class AgentAuthError extends Error {}
@@ -44,7 +45,8 @@ export function currentVaultUtxo(o: Opened, skip: ReadonlySet<string> = new Set(
 
 function target(o: Opened): SpendTarget {
   if (!o.key) throw new AgentAuthError("This vault's agent runs in your own MCP client, not on Satchel.");
-  return { contract: o.contract, params: o.params, agentSigner: o.key.signer, provider: getProvider() };
+  const provider = getProvider();
+  return { contract: o.contract, params: o.params, agentSigner: o.key.signer, provider, coinHeight: (u) => coinHeight(provider, o.contract.address, u) };
 }
 
 export interface VaultStatus {
@@ -55,14 +57,17 @@ export interface VaultStatus {
   tipHeight: number;
   remaining: string;
   resetsAtHeight: number | null;
+  /** v2: a new period starts periodBlocks after the last payment confirms. */
+  resetRule: "sliding";
   capPerPeriod: string;
   periodBlocks: string;
 }
 
 export async function vaultStatus(o: Opened): Promise<VaultStatus> {
   const [utxo, tipHeight] = await Promise.all([currentVaultUtxo(o), getProvider().getBlockHeight()]);
+  const height = utxo ? await coinHeight(getProvider(), o.contract.address, utxo) : 0;
   const state = utxo ? decodeState(utxo.token!.nft!.commitment) : null;
-  const budget = state ? remainingBudget(state, 0, tipHeight, o.params) : { remaining: 0n, resetsAtHeight: null };
+  const budget = state ? remainingBudget(state, height, tipHeight, o.params) : { remaining: 0n, resetsAtHeight: null };
   return {
     address: o.contract.address,
     tokenAddress: o.contract.tokenAddress,
@@ -71,6 +76,7 @@ export async function vaultStatus(o: Opened): Promise<VaultStatus> {
     tipHeight,
     remaining: budget.remaining.toString(),
     resetsAtHeight: budget.resetsAtHeight,
+    resetRule: "sliding",
     capPerPeriod: o.params.capPerPeriod.toString(),
     periodBlocks: o.params.periodBlocks.toString(),
   };

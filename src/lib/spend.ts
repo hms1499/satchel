@@ -25,6 +25,8 @@ export interface SpendTarget {
   params: VaultParams;
   agentSigner: SignatureTemplate;
   provider: NetworkProvider;
+  /** Confirmation height of a vault coin (0 = unconfirmed/unknown): decides whether a new period can start. */
+  coinHeight: (utxo: SpendableUtxo) => Promise<number>;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -100,7 +102,7 @@ export class VaultSpender {
         if (stale.size > 0) continue;
         return { ok: false, covenant: false, reason: "Vault not found or already closed" };
       }
-      const tipHeight = await t.provider.getBlockHeight();
+      const [tipHeight, height] = await Promise.all([t.provider.getBlockHeight(), t.coinHeight(vaultUtxo)]);
       let built;
       try {
         built = buildAgentSpend({
@@ -112,7 +114,7 @@ export class VaultSpender {
           amount,
           memo,
           tipHeight,
-          coinHeight: 0, // wired in Task 2
+          coinHeight: height,
           overrideRecipientIndex: tamper?.overrideRecipientIndex,
         });
       } catch (e) {
@@ -125,7 +127,7 @@ export class VaultSpender {
           spent: `${vaultUtxo.txid}:${vaultUtxo.vout}`,
           next: { ...vaultUtxo, txid, vout: 0, satoshis: vaultUtxo.satoshis - outflow, token: { ...vaultUtxo.token!, nft: { capability: "mutable", commitment: encodeState(newState) } } },
         });
-        const budget = remainingBudget(newState, 0, tipHeight, t.params);
+        const budget = remainingBudget(newState, 0, tipHeight, t.params); // the new vault coin is unconfirmed
         return { ok: true, txid, amount, fee, spentInPeriod: newState.spent, remaining: budget.remaining, balance: vaultUtxo.satoshis - outflow };
       } catch (e) {
         const nodeError = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").trim().slice(0, 300);

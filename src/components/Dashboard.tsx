@@ -163,7 +163,15 @@ export function Dashboard({
             >
               <div className={`h-full rounded-full transition-[width] ${pct >= 80 ? "bg-[#e8862e]" : "bg-brand-bright"}`} style={{ width: `${pct}%` }} />
             </div>
-            {blocksLeft !== null && <span className="text-[13px] text-muted">Budget resets in about {fmtSats(blocksLeft)} blocks</span>}
+            {status && spent > 0n && (
+              <span className="text-[13px] text-muted">
+                {blocksLeft === null
+                  ? `Resets ${fmtSats(descriptor.params.periodBlocks)} blocks after the last payment confirms`
+                  : blocksLeft > 0
+                    ? `Resets in about ${fmtSats(blocksLeft)} blocks (${fmtSats(descriptor.params.periodBlocks)} blocks after the last payment)`
+                    : "The next payment starts a new period"}
+              </span>
+            )}
           </div>
           <div className="flex flex-col gap-2">
             <span className="text-[13px] font-semibold">Allowlisted payees</span>

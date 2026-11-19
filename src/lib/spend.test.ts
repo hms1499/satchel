@@ -1,6 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { SignatureTemplate, randomUtxo } from "cashscript";
-import { binToHex, encodeCashAddress, hash160, secp256k1 } from "@bitauth/libauth";
+import { binToHex, decodeTransaction, encodeCashAddress, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
 import { NodeLikeProvider } from "./test-utils/node-like-provider";
 import { buildGenesis, findVaultUtxo, getVaultContract, type VaultParams } from "./vault";
 import { VaultSpender, type SpendTarget } from "./spend";
@@ -22,7 +22,7 @@ async function vault(): Promise<SpendTarget & { provider: NodeLikeProvider }> {
   const contract = getVaultContract(params, provider);
   const u = provider.addUtxo(owner.address, randomUtxo({ satoshis: 100_000n, vout: 0 }));
   await buildGenesis({ contract, inputs: [{ utxo: u, unlocker: owner.signer.unlockP2PKH() }], deposit: 20_000n, startHeight: 1000, changeAddress: owner.address }).builder.send();
-  return { contract, params, agentSigner: agent.signer, provider };
+  return { contract, params, agentSigner: agent.signer, provider, coinHeight: async () => 0 };
 }
 
 describe("VaultSpender", () => {
@@ -57,6 +57,45 @@ describe("VaultSpender", () => {
     t.provider.stale.set(t.contract.address, [genesis]);
     t.provider.lagCalls = 1000;
     expect((await spender.pay(t, payee.address, 1000n)).ok).toBe(true);
+  });
+});
+
+describe("VaultSpender: sliding-window periods", () => {
+  async function inputSequence(t: { provider: NodeLikeProvider }, txid: string) {
+    const tx = decodeTransaction(hexToBin(await t.provider.getRawTransaction(txid)));
+    if (typeof tx === "string") throw new Error(tx);
+    return tx.inputs[0].sequenceNumber;
+  }
+
+  it("starts a new period when the vault coin has cooled down", async () => {
+    const t = await vault();
+    const first = await new VaultSpender().pay({ ...t, coinHeight: async () => 0 }, payee.address, 3_000n);
+    expect(first.ok).toBe(true);
+    // The coin from that payment confirmed 143 blocks before the tip: 144 blocks old in the next block.
+    const r = await new VaultSpender().pay({ ...t, coinHeight: async () => 1000 - 143 }, payee.address, 1_000n);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(await inputSequence(t, r.txid)).toBe(144);
+    expect(r.spentInPeriod).toBe(r.amount + r.fee);
+  });
+
+  it("does not start a new period while the coin is unconfirmed", async () => {
+    const t = await vault();
+    const spender = new VaultSpender();
+    const a = await spender.pay(t, payee.address, 1_000n);
+    const b = await spender.pay(t, payee.address, 1_000n);
+    expect(a.ok && b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(await inputSequence(t, b.txid)).toBe(0xfffffffe);
+    expect(b.spentInPeriod).toBe(a.spentInPeriod + b.amount + b.fee);
+  });
+
+  it("looks up the height of the coin it actually spends", async () => {
+    const t = await vault();
+    const spy = vi.fn(async () => 0);
+    const vaultCoin = (await findVaultUtxo(t.contract))!;
+    await new VaultSpender().pay({ ...t, coinHeight: spy }, payee.address, 1_000n);
+    expect(spy).toHaveBeenCalledWith(expect.objectContaining({ txid: vaultCoin.txid, vout: vaultCoin.vout }));
   });
 });
 

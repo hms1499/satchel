@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { decodeState, getVaultContract, lockingBytecodeOf, remainingBudget, type VaultParams } from "../../src/lib/vault";
+import { coinHeight } from "../../src/lib/coin-height";
 import { binToHex, type NetworkProvider, type SpendableUtxo } from "../../src/lib/chain-deps";
 import { decodeConnectCode, type ConnectInfo } from "../../src/lib/connect-code";
 import { paramsFromDescriptorParams } from "../../src/lib/descriptor";
@@ -123,6 +124,7 @@ const paymentFailure = (payment: Extract<PaymentOutcome, { ok: false }>): ToolRe
 
 export function createHandlers(deps: HandlerDeps) {
   const { cfg, provider, spender } = deps;
+  const heightOf = (v: { contract: { address: string } }) => (u: { txid: string; vout: number }) => coinHeight(provider, v.contract.address, u);
   let key: AgentKey | undefined;
   const agent = () => (key ??= loadOrCreateAgentKey(cfg));
 
@@ -232,7 +234,7 @@ export function createHandlers(deps: HandlerDeps) {
       if ("error" in v) return v.error;
       const state = decodeState(v.utxo.token!.nft!.commitment);
       const tipHeight = await provider.getBlockHeight();
-      const budget = remainingBudget(state, 0, tipHeight, v.params);
+      const budget = remainingBudget(state, await coinHeight(provider, v.contract.address, v.utxo), tipHeight, v.params);
       return ok({
         vault: v.contract.address,
         network: cfg.network,
@@ -240,6 +242,7 @@ export function createHandlers(deps: HandlerDeps) {
         spentThisPeriod: state.spent,
         remaining: budget.remaining,
         resetsAtHeight: budget.resetsAtHeight,
+        resetRule: "sliding",
         tipHeight,
         capPerPeriod: v.params.capPerPeriod,
         periodBlocks: v.params.periodBlocks,
@@ -307,7 +310,7 @@ export function createHandlers(deps: HandlerDeps) {
       const v = await openVault(info);
       if ("error" in v) return v.error;
       const memoHex = memo.length > 0 ? SEND_MEMO_PREFIX_HEX + binToHex(memo) : undefined;
-      const payment = await spender.pay({ ...v, agentSigner: agent().signer, provider }, to, amount, memoHex);
+      const payment = await spender.pay({ ...v, agentSigner: agent().signer, provider, coinHeight: heightOf(v) }, to, amount, memoHex);
       if (!payment.ok) return paymentFailure(payment);
       return ok({
         txid: payment.txid,
@@ -372,7 +375,7 @@ export function createHandlers(deps: HandlerDeps) {
         return fail(`Not paying: the price ${amount} sats exceeds SATCHEL_MAX_PRICE_SATS (${cfg.maxPriceSats}).`);
       }
 
-      const target = { ...v, agentSigner: agent().signer, provider };
+      const target = { ...v, agentSigner: agent().signer, provider, coinHeight: heightOf(v) };
       const payment = await spender.pay(target, payTo, amount, memoForChallenge(challenge));
       if (!payment.ok) return paymentFailure(payment);
 
