@@ -1,6 +1,6 @@
 {
   "name": "satchel-pay-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP server that lets your own AI agent pay for APIs from a Satchel vault on Bitcoin Cash: a spending cap and payee allowlist enforced by consensus, with the agent key kept on your machine.",
   "type": "module",
   "bin": {

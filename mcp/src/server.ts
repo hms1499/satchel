@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { createHandlers } from "./tools";
 
-export const VERSION = "0.1.0";
+export const VERSION = "0.2.0";
 
 /** The satchel-pay-mcp tools. Descriptions are written for the model that decides when to call them. */
 export function createSatchelServer(handlers: ReturnType<typeof createHandlers>): McpServer {

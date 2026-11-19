@@ -33,7 +33,7 @@ Requires Node.js 22 or later. Pin the version you reviewed.
 **Claude Code**
 
 ```bash
-claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
+claude mcp add satchel -- npx -y satchel-pay-mcp@0.2.0
 ```
 
 **Claude Desktop** (`claude_desktop_config.json`), **Cursor** (`~/.cursor/mcp.json`), **Windsurf**, **Gemini CLI**
@@ -42,7 +42,7 @@ claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
 ```json
 {
   "mcpServers": {
-    "satchel": { "command": "npx", "args": ["-y", "satchel-pay-mcp@0.1.0"] }
+    "satchel": { "command": "npx", "args": ["-y", "satchel-pay-mcp@0.2.0"] }
   }
 }
 ```
@@ -52,7 +52,7 @@ claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
 ```json
 {
   "servers": {
-    "satchel": { "type": "stdio", "command": "npx", "args": ["-y", "satchel-pay-mcp@0.1.0"] }
+    "satchel": { "type": "stdio", "command": "npx", "args": ["-y", "satchel-pay-mcp@0.2.0"] }
   }
 }
 ```
@@ -62,7 +62,7 @@ claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
 ```toml
 [mcp_servers.satchel]
 command = "npx"
-args = ["-y", "satchel-pay-mcp@0.1.0"]
+args = ["-y", "satchel-pay-mcp@0.2.0"]
 ```
 
 ChatGPT only accepts remote MCP servers, so it is not supported (the agent key would have to live on a server).

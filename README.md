@@ -18,7 +18,7 @@ Built for [BCH BLAZE 2026](https://dorahacks.io/hackathon/bchblaze2026/detail) (
 | | |
 | --- | --- |
 | **Live app (BCH mainnet)** | https://satchel-sigma.vercel.app |
-| **Your own agent (MCP)** | [`satchel-pay-mcp`](https://www.npmjs.com/package/satchel-pay-mcp): `claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0` |
+| **Your own agent (MCP)** | [`satchel-pay-mcp`](https://www.npmjs.com/package/satchel-pay-mcp): `claude mcp add satchel -- npx -y satchel-pay-mcp@0.2.0` |
 | **Sell an API to agents** | [`satchel-pay-server`](https://www.npmjs.com/package/satchel-pay-server): `npm install satchel-pay-server` |
 | **Live example seller** | https://satchel-example-seller.vercel.app (built on `satchel-pay-server`) |
 
@@ -53,7 +53,7 @@ Gemini CLI and other MCP clients, pay for APIs from a Satchel vault. The agent k
 the covenant enforces the cap and the allowlist.
 
 ```bash
-claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
+claude mcp add satchel -- npx -y satchel-pay-mcp@0.2.0
 ```
 
 Then ask your agent to "set up Satchel", create the vault from the link it gives you, and paste back the connect code.
