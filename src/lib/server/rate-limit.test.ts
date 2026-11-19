@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { allowRequest } from "./rate-limit";
 import type { SharedCache } from "./runtime-cache";
 
