@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { MockNetworkProvider, SignatureTemplate, randomUtxo } from "cashscript";
-import { binToHex, encodeCashAddress, hash160, secp256k1 } from "@bitauth/libauth";
+import { binToHex, decodeTransaction, encodeCashAddress, hash160, hexToBin, secp256k1 } from "@bitauth/libauth";
 import {
   buildAgentSpend,
   buildGenesis,
@@ -11,6 +11,7 @@ import {
   remainingBudget,
   type VaultParams,
 } from "./vault";
+import { canStartNewPeriod } from "./vault";
 
 function keypair(seed: number) {
   const priv = new Uint8Array(32).fill(seed);
@@ -67,6 +68,7 @@ describe("Satchel covenant", () => {
       to: apiA.address,
       amount: 2_000n,
       tipHeight: START,
+      coinHeight: START,
       ...overrides,
     });
 
@@ -112,10 +114,36 @@ describe("Satchel covenant", () => {
     await expect(spend({ overrideNextState: { periodStart: START, spent: 0n } }).builder.send()).rejects.toThrow(/nftCommitment ==/);
   });
 
-  it("rejects an agent that fakes a new period early", async () => {
-    await expect(
-      spend({ overrideNextState: { periodStart: START + 144, spent: 2_302n } }).builder.send(),
-    ).rejects.toThrow(/nftCommitment ==/);
+  it("starts a new period only with a cooldown sequence: newPeriod with sequence 0 fails CSV", async () => {
+    await expect(spend({ overrideNewPeriod: true, overrideSequence: 0 }).builder.send()).rejects.toThrow(/this\.age >= periodBlocks/);
+  });
+
+  it("a new-period spend always carries sequence >= periodBlocks (BIP68 makes it unminable before the cooldown)", () => {
+    const { builder, newPeriod } = spend({ coinHeight: START, tipHeight: START + 144 });
+    expect(newPeriod).toBe(true);
+    const tx = decodeTransaction(hexToBin(builder.build()));
+    if (typeof tx === "string") throw new Error(tx);
+    expect(tx.version).toBe(2);
+    expect(tx.inputs[0].sequenceNumber).toBe(144);
+  });
+
+  it("regression 2026-11-19: an old locktime no longer rolls a period", async () => {
+    // The audit's burst: the vault was idle for 5 periods and the agent chains spends with old locktimes.
+    ctx.provider.setBlockHeight(START + 5 * 144);
+    let accepted = 0n;
+    for (let k = 1; k <= 5; k++) {
+      const { builder, outflow } = spend({ tipHeight: START + k * 144, overrideNewPeriod: false });
+      try {
+        await builder.send();
+      } catch (e) {
+        expect(String(e)).toMatch(/newSpent <= capPerPeriod/);
+        break;
+      }
+      accepted += outflow;
+      ctx.vaultUtxo = (await findVaultUtxo(ctx.contract))!;
+    }
+    expect(accepted).toBeGreaterThan(0n);
+    expect(accepted).toBeLessThanOrEqual(10_000n);
   });
 
   it("rejects extra outputs (e.g. siphoning change to the attacker)", async () => {
@@ -125,18 +153,18 @@ describe("Satchel covenant", () => {
     ).rejects.toThrow(/outputs\.length == 2/);
   });
 
-  it("resets the budget once the period has passed", async () => {
+  it("resets the budget after the cooldown", async () => {
     await spend({ amount: 9_000n }).builder.send();
     ctx.vaultUtxo = (await findVaultUtxo(ctx.contract))!;
     await expect(spend({ amount: 2_000n }).builder.send()).rejects.toThrow(/newSpent <= capPerPeriod/);
 
-    const later = START + 144;
-    ctx.provider.setBlockHeight(later);
-    const { builder, outflow } = spend({ amount: 2_000n, tipHeight: later });
+    const tip = START + 143; // the next block is START + 144: the coin is 144 blocks old there
+    ctx.provider.setBlockHeight(tip);
+    const { builder, outflow, newPeriod } = spend({ amount: 2_000n, tipHeight: tip });
+    expect(newPeriod).toBe(true);
     await builder.send();
     const next = (await findVaultUtxo(ctx.contract))!;
-    expect(decodeState(next.token!.nft!.commitment)).toEqual({ periodStart: later, spent: outflow });
-    expect(remainingBudget(decodeState(next.token!.nft!.commitment), later, ctx.params).remaining).toBe(10_000n - outflow);
+    expect(decodeState(next.token!.nft!.commitment)).toEqual({ periodStart: tip, spent: outflow });
   });
 
   it("lets the owner withdraw everything", async () => {
@@ -157,5 +185,35 @@ describe("findVaultUtxo", () => {
     const key = `${ctx.vaultUtxo.txid}:${ctx.vaultUtxo.vout}`;
     expect(await findVaultUtxo(ctx.contract, new Set([key]))).toBeUndefined();
     expect((await findVaultUtxo(ctx.contract))?.txid).toBe(ctx.vaultUtxo.txid);
+  });
+});
+
+describe("sliding-window budget math", () => {
+  const params = { capPerPeriod: 10_000n, periodBlocks: 144n };
+  const state = { periodStart: START, spent: 4_000n };
+
+  it("canStartNewPeriod needs a confirmed coin that is periodBlocks old at the next block", () => {
+    expect(canStartNewPeriod(0, START + 1_000, 144n)).toBe(false);
+    expect(canStartNewPeriod(START, START + 142, 144n)).toBe(false);
+    expect(canStartNewPeriod(START, START + 143, 144n)).toBe(true);
+  });
+
+  it("an unconfirmed coin: no reset known yet, budget = cap - spent", () => {
+    expect(remainingBudget(state, 0, START + 500, params)).toEqual({ remaining: 6_000n, resetsAtHeight: null });
+  });
+
+  it("a confirmed coin before the cooldown ends", () => {
+    expect(remainingBudget(state, START, START + 142, params)).toEqual({ remaining: 6_000n, resetsAtHeight: START + 143 });
+  });
+
+  it("a confirmed coin after the cooldown: the full cap", () => {
+    expect(remainingBudget(state, START, START + 143, params).remaining).toBe(10_000n);
+  });
+
+  it("getVaultContract rejects periodBlocks outside 1..65535", () => {
+    const base: VaultParams = { ownerPk: owner.pubHex, agentPk: agent.pubHex, capPerPeriod: 1n, periodBlocks: 0n, allowlist: [apiA.address] };
+    const provider = new MockNetworkProvider();
+    expect(() => getVaultContract(base, provider)).toThrow("periodBlocks must be between 1 and 65535");
+    expect(() => getVaultContract({ ...base, periodBlocks: 65_536n }, provider)).toThrow("periodBlocks must be between 1 and 65535");
   });
 });

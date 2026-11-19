@@ -54,7 +54,7 @@ export interface VaultStatus {
   state: { periodStart: number; spent: string } | null; // sats as a string (JSON has no bigint)
   tipHeight: number;
   remaining: string;
-  resetsAtHeight: number;
+  resetsAtHeight: number | null;
   capPerPeriod: string;
   periodBlocks: string;
 }
@@ -62,7 +62,7 @@ export interface VaultStatus {
 export async function vaultStatus(o: Opened): Promise<VaultStatus> {
   const [utxo, tipHeight] = await Promise.all([currentVaultUtxo(o), getProvider().getBlockHeight()]);
   const state = utxo ? decodeState(utxo.token!.nft!.commitment) : null;
-  const budget = state ? remainingBudget(state, tipHeight, o.params) : { remaining: 0n, resetsAtHeight: 0 };
+  const budget = state ? remainingBudget(state, 0, tipHeight, o.params) : { remaining: 0n, resetsAtHeight: null };
   return {
     address: o.contract.address,
     tokenAddress: o.contract.tokenAddress,

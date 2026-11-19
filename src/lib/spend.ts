@@ -112,26 +112,27 @@ export class VaultSpender {
           amount,
           memo,
           tipHeight,
+          coinHeight: 0, // wired in Task 2
           overrideRecipientIndex: tamper?.overrideRecipientIndex,
         });
       } catch (e) {
         return { ok: false, covenant: false, reason: e instanceof Error ? e.message : String(e) };
       }
-      const { builder, outflow, newState, fee } = built;
+      const { builder, outflow, newState, fee, newPeriod } = built;
       try {
         const txid = await t.provider.sendRawTransaction(builder.build());
         this.successor.set(t.contract.address, {
           spent: `${vaultUtxo.txid}:${vaultUtxo.vout}`,
           next: { ...vaultUtxo, txid, vout: 0, satoshis: vaultUtxo.satoshis - outflow, token: { ...vaultUtxo.token!, nft: { capability: "mutable", commitment: encodeState(newState) } } },
         });
-        const budget = remainingBudget(newState, tipHeight, t.params);
+        const budget = remainingBudget(newState, 0, tipHeight, t.params);
         return { ok: true, txid, amount, fee, spentInPeriod: newState.spent, remaining: budget.remaining, balance: vaultUtxo.satoshis - outflow };
       } catch (e) {
         const nodeError = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").trim().slice(0, 300);
         const rule = failingRule(builder);
         const kind = classifyBroadcastError(nodeError, rule);
         if (kind === "covenant") {
-          const { next } = computeNextState(decodeState(vaultUtxo.token!.nft!.commitment), outflow, tipHeight, t.params);
+          const { next } = computeNextState(decodeState(vaultUtxo.token!.nft!.commitment), outflow, newPeriod, tipHeight, t.params);
           return { ok: false, covenant: true, reason: "Rejected by the network: the vault covenant does not allow this payment", rule, nodeError, wouldSpend: next.spent };
         }
         if (kind === "other") return { ok: false, covenant: false, reason: `The network did not accept the payment: ${nodeError}`, nodeError };

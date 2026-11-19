@@ -232,7 +232,7 @@ export function createHandlers(deps: HandlerDeps) {
       if ("error" in v) return v.error;
       const state = decodeState(v.utxo.token!.nft!.commitment);
       const tipHeight = await provider.getBlockHeight();
-      const budget = remainingBudget(state, tipHeight, v.params);
+      const budget = remainingBudget(state, 0, tipHeight, v.params);
       return ok({
         vault: v.contract.address,
         network: cfg.network,

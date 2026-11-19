@@ -124,7 +124,7 @@ export function Dashboard({
   const remaining = status ? BigInt(status.remaining) : cap;
   const spent = cap - remaining;
   const pct = cap > 0n ? Math.min(100, Number((spent * 100n) / cap)) : 0;
-  const blocksLeft = status ? Math.max(0, status.resetsAtHeight - status.tipHeight) : null;
+  const blocksLeft = status && status.resetsAtHeight !== null ? Math.max(0, status.resetsAtHeight - status.tipHeight) : null;
   const periodNoun = descriptor.params.periodBlocks === "6" ? "hour" : descriptor.params.periodBlocks === "1008" ? "week" : descriptor.params.periodBlocks === "144" ? "day" : "period";
   // A vault recovered from chain has no agent access token (it is never published), so only the owner actions work.
   const agentLocked = !descriptor.token;

@@ -19,6 +19,8 @@ import artifact from "./contract/Satchel.artifact.json";
 
 export const DUST = 1000n; // vault output keeps at least this many sats (token output)
 export const MIN_PAYMENT = 546n;
+/** BIP68 block-based relative locks hold at most 65,535 blocks: the cooldown (`this.age`) needs periodBlocks in range. */
+export const MAX_PERIOD_BLOCKS = 65535n;
 
 export interface VaultParams {
   ownerPk: string; // hex, compressed pubkey
@@ -50,6 +52,7 @@ export function allowlistHash(allowlist: string[]): Uint8Array {
 }
 
 export function getVaultContract(params: VaultParams, provider: NetworkProvider) {
+  if (params.periodBlocks < 1n || params.periodBlocks > MAX_PERIOD_BLOCKS) throw new Error("periodBlocks must be between 1 and 65535");
   return new Contract(
     artifact,
     [
@@ -92,29 +95,44 @@ export function decodeState(commitmentHex: string): VaultState {
   return { periodStart: Number(readLE(bin.slice(0, 4))), spent: readLE(bin.slice(4)) };
 }
 
+/**
+ * v2 cooldown rule: a new period may start when the vault coin is confirmed and at least `periodBlocks` old in the
+ * next block (where a transaction broadcast now would be mined). `coinHeight` 0 = unconfirmed or unknown.
+ */
+export function canStartNewPeriod(coinHeight: number, tipHeight: number, periodBlocks: bigint): boolean {
+  return coinHeight > 0 && tipHeight + 1 - coinHeight >= Number(periodBlocks);
+}
+
 /** Mirrors the covenant's budget logic so the UI/agent can predict the outcome of a spend. */
 export function computeNextState(
   state: VaultState,
   outflow: bigint,
+  newPeriod: boolean,
   locktime: number,
-  params: Pick<VaultParams, "periodBlocks" | "capPerPeriod">,
+  params: Pick<VaultParams, "capPerPeriod">,
 ) {
-  const nextPeriod = state.periodStart + Number(params.periodBlocks);
-  const rolled = locktime >= nextPeriod;
-  const next: VaultState = rolled
+  const next: VaultState = newPeriod
     ? { periodStart: locktime, spent: outflow }
     : { periodStart: state.periodStart, spent: state.spent + outflow };
-  return { next, rolled, withinCap: next.spent <= params.capPerPeriod };
+  return { next, withinCap: next.spent <= params.capPerPeriod };
 }
 
-/** Remaining budget for the period the next block would be in. */
-export function remainingBudget(state: VaultState, tipHeight: number, params: Pick<VaultParams, "periodBlocks" | "capPerPeriod">) {
-  const rolled = tipHeight >= state.periodStart + Number(params.periodBlocks);
-  const spent = rolled ? 0n : state.spent;
+/**
+ * Budget available to the next payment. `resetsAtHeight` is the tip height from which a new period can start
+ * (`coinHeight + periodBlocks - 1`), or null while the vault coin is unconfirmed (it resets periodBlocks after the
+ * last payment confirms).
+ */
+export function remainingBudget(
+  state: VaultState,
+  coinHeight: number,
+  tipHeight: number,
+  params: Pick<VaultParams, "periodBlocks" | "capPerPeriod">,
+) {
+  const spent = canStartNewPeriod(coinHeight, tipHeight, params.periodBlocks) ? 0n : state.spent;
   const left = params.capPerPeriod - spent;
   return {
     remaining: left > 0n ? left : 0n,
-    resetsAtHeight: rolled ? tipHeight + Number(params.periodBlocks) : state.periodStart + Number(params.periodBlocks),
+    resetsAtHeight: coinHeight > 0 ? coinHeight + Number(params.periodBlocks) - 1 : null,
   };
 }
 
@@ -144,6 +162,12 @@ export interface AgentSpendRequest {
   amount: bigint;
   memo?: string; // hex payload for an OP_RETURN output
   tipHeight: number;
+  /** Confirmation height of `vaultUtxo` (0 = unconfirmed/unknown): decides whether a new period can start. */
+  coinHeight: number;
+  /** Testing/demo only: force (or forbid) starting a new period. */
+  overrideNewPeriod?: boolean;
+  /** Testing/demo only: the vault input's sequence on a new-period spend (default periodBlocks). */
+  overrideSequence?: number;
   /** Testing/demo only: lie about the new state instead of computing it honestly. */
   overrideNextState?: VaultState;
   /** Testing/demo only: force the allowlist index used (to pay a non-allowlisted address). */
@@ -160,12 +184,15 @@ export function buildAgentSpend(req: AgentSpendRequest) {
   if (index < 0) throw new Error(`${to} is not in the vault allowlist`);
 
   const extraTotal = (req.extraOutputs ?? []).reduce((s, o) => s + o.amount, 0n);
+  const newPeriod = req.overrideNewPeriod ?? canStartNewPeriod(req.coinHeight, tipHeight, params.periodBlocks);
+  // BIP68: on a new period the input's relative lock must cover the covenant's `this.age >= periodBlocks`.
+  const inputOptions = newPeriod ? { sequence: req.overrideSequence ?? Number(params.periodBlocks) } : undefined;
   const build = (fee: bigint) => {
     const outflow = amount + fee + extraTotal;
-    const { next } = computeNextState(state, outflow, tipHeight, params);
+    const { next } = computeNextState(state, outflow, newPeriod, tipHeight, params);
     const newState = req.overrideNextState ?? next;
     const builder = new TransactionBuilder({ provider: contract.provider })
-      .addInput(vaultUtxo, contract.unlock.spend(agentKey, list, BigInt(index)))
+      .addInput(vaultUtxo, contract.unlock.spend(agentKey, list, BigInt(index), newPeriod), inputOptions)
       .addOutput({
         to: contract.tokenAddress,
         amount: vaultUtxo.satoshis - outflow,
@@ -188,7 +215,7 @@ export function buildAgentSpend(req: AgentSpendRequest) {
   const fee = size * FEE_RATE + 2n;
   const final = build(fee);
   if (vaultUtxo.satoshis - final.outflow < DUST) throw new Error("Vault balance too low for this payment");
-  return { ...final, fee };
+  return { ...final, fee, newPeriod };
 }
 
 /** Owner withdraws everything (closing the vault and burning its state NFT). */
