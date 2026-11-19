@@ -11,7 +11,7 @@ export const ELECTRUM_HOSTS: Record<BchNetwork, readonly string[]> = {
 
 /** Node verdicts (a rejected transaction, an unknown txid): answers, never a reason to try another server. */
 const NODE_VERDICT = /mandatory-script-verify|non-BIP68-final|missing-?inputs|txn-mempool-conflict|dust|bad-txns|no such mempool|not found/i;
-const CONNECTION = /timed? ?out|establish connection|ECONN|ENOTFOUND|EAI_AGAIN|connection (closed|lost|refused)|socket|websocket|disconnected|not connected/i;
+const CONNECTION = /timed? ?out|establish connection|failed to connect|ECONN|ENOTFOUND|EAI_AGAIN|connection (closed|lost|refused)|socket|websocket|disconnected|not connected/i;
 
 /** True for a failure to reach the server (timeout, refused, dropped socket); false for anything the node answered. */
 export function isConnectionError(e: unknown): boolean {

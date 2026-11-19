@@ -20,20 +20,23 @@ export class FailoverElectrumProvider implements NetworkProvider {
     if (hosts.length === 0) throw new Error(`no Electrum hosts for ${network}`);
   }
 
-  private current(): ElectrumNetworkProvider {
-    const host = this.hosts[this.index % this.hosts.length];
+  private at(index: number): ElectrumNetworkProvider {
+    const host = this.hosts[index];
     let p = this.providers.get(host);
     if (!p) this.providers.set(host, (p = this.make(host)));
     return p;
   }
 
   private async call<T>(fn: (p: ElectrumNetworkProvider) => Promise<T>): Promise<T> {
+    const used = this.index;
     try {
-      return await fn(this.current());
+      return await fn(this.at(used));
     } catch (e) {
       if (!isConnectionError(e) || this.hosts.length < 2) throw e;
-      this.index = (this.index + 1) % this.hosts.length;
-      return fn(this.current());
+      // Concurrent failures on the same host advance the index once, and a retry never lands on the host that failed.
+      if (this.index === used) this.index = (used + 1) % this.hosts.length;
+      const retry = this.index !== used ? this.index : (used + 1) % this.hosts.length;
+      return fn(this.at(retry));
     }
   }
 

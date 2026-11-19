@@ -23,11 +23,20 @@ export function electrumTransactionFetcher(network: BchNetwork, host?: string, t
   const hosts = host ? [host] : ELECTRUM_HOSTS[network];
   let index = 0;
   let client: Promise<ElectrumClient<ElectrumClientEvents>> | undefined;
+  let clientIndex = -1;
   let connecting: Promise<void> | undefined;
 
   const fetchOnce = async (txid: string) => {
+    if (client && clientIndex !== index) {
+      // The host changed: close the old client (best effort) and connect to the current one.
+      const old = client;
+      client = undefined;
+      connecting = undefined;
+      old.then((c) => c.disconnect()).catch(() => {});
+    }
+    clientIndex = index;
     client ??= import("@electrum-cash/network")
-      .then(({ ElectrumClient }) => new ElectrumClient("satchel-pay-server", ELECTRUM_PROTOCOL_VERSION, hosts[index % hosts.length]))
+      .then(({ ElectrumClient }) => new ElectrumClient("satchel-pay-server", ELECTRUM_PROTOCOL_VERSION, hosts[index]))
       .catch((e: unknown) => {
         client = undefined; // import or constructor failed: let the next call try again
         throw e;
@@ -44,13 +53,13 @@ export function electrumTransactionFetcher(network: BchNetwork, host?: string, t
   };
 
   return async (txid) => {
+    const used = index;
     try {
       return await fetchOnce(txid);
     } catch (e) {
       if (hosts.length < 2 || !isConnectionError(e)) throw e;
-      index++;
-      client = undefined;
-      connecting = undefined;
+      // Concurrent failures on the same host advance once; the retry uses the next host, never the failed one.
+      if (index === used) index = (used + 1) % hosts.length;
       return fetchOnce(txid);
     }
   };

@@ -51,6 +51,20 @@ describe("FailoverElectrumProvider", () => {
     await expect(p.getBlockHeight()).rejects.toThrow(/timed out/);
   });
 
+  it("concurrent failures on the dead host all retry on a live host (no index skew)", async () => {
+    const { make } = farm({ a: { getBlockHeight: down }, b: {}, c: {} });
+    const p = new FailoverElectrumProvider("mainnet", ["a", "b", "c"], make);
+    const results = await Promise.allSettled(Array.from({ length: 20 }, () => p.getBlockHeight()));
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(0);
+  });
+
+  it("with two hosts, concurrent failures on the first all land on the second", async () => {
+    const { make } = farm({ a: { getBlockHeight: down }, b: {} });
+    const p = new FailoverElectrumProvider("chipnet", ["a", "b"], make);
+    const results = await Promise.allSettled([p.getBlockHeight(), p.getBlockHeight(), p.getBlockHeight()]);
+    expect(results.filter((r) => r.status === "rejected")).toHaveLength(0);
+  });
+
   it("forwards performRequest with failover", async () => {
     const { make } = farm({ a: { performRequest: down }, b: { performRequest: async (m) => [m] } });
     const p = new FailoverElectrumProvider("mainnet", ["a", "b"], make);
@@ -60,7 +74,7 @@ describe("FailoverElectrumProvider", () => {
 
 describe("isConnectionError", () => {
   it("connection-level failures", () => {
-    for (const m of ["Failed to establish connection: WebSocket: 1006", "Electrum connect timed out after 10000 ms", "connect ECONNREFUSED 1.2.3.4:50004", "getaddrinfo ENOTFOUND x", "Connection closed", "socket hang up"]) {
+    for (const m of ["Failed to connect to 'bch.imaginary.cash'.", "Failed to establish connection: WebSocket: 1006", "Electrum connect timed out after 10000 ms", "connect ECONNREFUSED 1.2.3.4:50004", "getaddrinfo ENOTFOUND x", "Connection closed", "socket hang up"]) {
       expect(isConnectionError(new Error(m))).toBe(true);
     }
   });

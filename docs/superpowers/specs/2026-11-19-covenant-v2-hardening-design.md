@@ -75,8 +75,10 @@ The user chose approach 1.
   the height it was mined at, because a transaction cannot be mined before its locktime.
 - Everything else is unchanged: single input, category and mutable capability, allowlist before budget, fee counted
   in outflow, output 2 OP_RETURN, unconditional `withdraw`.
-- Constraint checked off-chain: `periodBlocks` is between 1 and 65,535. The UI and the builder reject anything else.
-  The covenant does not need this check, because a larger value just makes CSV unsatisfiable, which is safe.
+- `periodBlocks` must be between 1 and 65,535, and the covenant enforces this itself (`require(periodBlocks >= 1)`,
+  `require(periodBlocks <= 65535)`), as do the UI and the builder. (The final review found that 0, 65,536 (which BIP68
+  masks to 0) and values with the disable flag would each turn the cooldown off, so an off-chain check alone was not
+  enough.)
 
 ### Transaction builder and budget math (`src/lib/vault.ts`, `src/lib/spend.ts`)
 

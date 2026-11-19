@@ -20,6 +20,11 @@ contract Satchel(
     function spend(sig agentSig, bytes allowlist, int recipientIndex, bool newPeriod) {
         require(checkSig(agentSig, agentPk));
 
+        // The cooldown below is a BIP68 relative lock in blocks: periodBlocks must fit its 16 bits and be non-zero.
+        // (0, values masked to 0 like 65536, and values with the disable flag would turn the cooldown off.)
+        require(periodBlocks >= 1);
+        require(periodBlocks <= 65535);
+
         // Only the vault UTXO may be spent, so vault funds can never be merged with other coins.
         require(tx.inputs.length == 1);
         require(this.activeInputIndex == 0);

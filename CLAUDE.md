@@ -89,7 +89,8 @@ is committed and imported by both the client and the server.
 - `spend`: exactly 1 input. Output 0 is the vault with the same bytecode and category and the honest new state. Output 1 is an allowlisted
   payee with no tokens. Output 2 is optional and must be a 0-value OP_RETURN. Outflow (payment + fee) counts toward the cap.
 - A new period only via `spend(…, newPeriod=true)`, which requires `this.age >= periodBlocks` (BIP68). Agent txs set
-  `locktime = tip` and, on a new period, input `sequence = periodBlocks`. `periodBlocks` is 1..65535. `periodStart` is informational.
+  `locktime = tip` and, on a new period, input `sequence = periodBlocks`. `periodBlocks` is 1..65535, enforced by the covenant itself
+  (0, 65536 and disable-flag values would turn the cooldown off). `periodStart` is informational.
 - No path may let the server or agent move funds beyond the cap or outside the allowlist. A new attack idea gets a
   failing test **first**, and that test must assert the exact `require` line that stops it.
 

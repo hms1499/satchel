@@ -67,3 +67,29 @@ describe("electrumTransactionFetcher failover", () => {
     expect(hosts).toEqual(["bch.imaginary.cash", ELECTRUM_HOSTS.mainnet[1]]);
   });
 });
+
+describe("electrumTransactionFetcher concurrent failover", () => {
+  it("two concurrent calls that both fail on the dead host both succeed on the next", async () => {
+    vi.doMock("@electrum-cash/network", () => ({
+      ElectrumClient: class {
+        status = 0;
+        constructor(_app: string, _v: string, private host: string) {}
+        connect() {
+          if (this.host === "chipnet.bch.ninja") return Promise.reject(new Error("Failed to connect to 'chipnet.bch.ninja'."));
+          this.status = 1;
+          return Promise.resolve();
+        }
+        disconnect() {
+          return Promise.resolve(true);
+        }
+        request() {
+          return Promise.resolve("00");
+        }
+      },
+    }));
+    const { electrumTransactionFetcher } = await import("./electrum");
+    const fetcher = electrumTransactionFetcher("chipnet", undefined, 200);
+    const results = await Promise.allSettled([fetcher("ab".repeat(32)), fetcher("cd".repeat(32))]);
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+  });
+});

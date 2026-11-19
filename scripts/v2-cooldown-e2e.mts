@@ -120,10 +120,16 @@ async function main() {
   const r3 = await broadcast(seq0.builder.build());
   check(Boolean(r3.error && /mandatory-script-verify-flag-failed/i.test(r3.error)), `new period with sequence 0 rejected in script: ${r3.error?.slice(0, 120)}`);
 
-  // 5. New period with sequence 1 on an unconfirmed coin: BIP68 makes it non-final.
-  const seq1 = await spend(coin, { overrideNewPeriod: true });
-  const r4 = await broadcast(seq1.builder.build());
-  check(Boolean(r4.error && /non-BIP68-final/i.test(r4.error)), `new period before the cooldown rejected by the node: ${r4.error?.slice(0, 120)}`);
+  // 5. New period with sequence 1 on an unconfirmed coin: BIP68 makes it non-final. If a block confirmed the coin in
+  // the meantime this step would be accepted (and spend the coin), so it only runs while the coin is unconfirmed.
+  if ((await coinHeight(provider, contract.address, coin)) > 0) {
+    check(false, "the vault coin confirmed before step 5 could run; rerun to prove the BIP68 rejection");
+  } else {
+    const seq1 = await spend(coin, { overrideNewPeriod: true });
+    const r4 = await broadcast(seq1.builder.build());
+    check(Boolean(r4.error && /non-BIP68-final/i.test(r4.error)), `new period before the cooldown rejected by the node: ${r4.error?.slice(0, 120)}`);
+    if (r4.txid) throw new Error(`step 5 was accepted (${r4.txid}): the vault coin moved; withdraw with scripts/e2e.mts withdraw ${file}`);
+  }
 
   // 6. Wait for the cooldown (one confirmation), then a new period is accepted.
   const started = Date.now();
@@ -142,14 +148,9 @@ async function main() {
   if (r5.txid) log("tx  new period:", link(r5.txid));
   check(p5.newState.spent === p5.outflow, `new period's spent = this payment's outflow (${p5.outflow})`);
 
-  // 7. Withdraw.
-  for (let i = 0; i < 20; i++) {
-    const u = await findVaultUtxo(contract);
-    if (u && (!r5.txid || u.txid === r5.txid)) {
-      coin = u;
-      break;
-    }
-    await sleep(1500);
+  // 7. Withdraw, from the coin the new-period payment created (built locally: Electrum may lag behind it).
+  if (r5.txid) {
+    coin = { ...coin, txid: r5.txid, vout: 0, satoshis: coin.satoshis - p5.outflow, token: { ...coin.token!, nft: { capability: "mutable", commitment: encodeState(p5.newState) } } };
   }
   const w = await broadcast(buildWithdraw({ contract, vaultUtxo: coin, to: owner.address, ownerSigner: owner.signer }).build());
   check(Boolean(w.txid), `owner withdraw: ${w.error ?? ""}`);
