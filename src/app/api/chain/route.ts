@@ -1,5 +1,6 @@
 import { binToHex, cashAddressToLockingBytecode, sha256 } from "@bitauth/libauth";
 import { getProvider } from "@/lib/server/electrum";
+import { allowRequest } from "@/lib/server/rate-limit";
 
 /**
  * Thin chain proxy for the browser (keeps Electrum server-side):
@@ -11,6 +12,11 @@ import { getProvider } from "@/lib/server/electrum";
  */
 
 const HISTORY_PER_ADDRESS = 25;
+// Request caps: the browser's wallet scan sends 20 addresses (2 paths x 10) and up to 60 txids (recovery).
+const MAX_ADDRESSES = 20;
+const MAX_TXIDS = 60;
+
+const tooMany = (what: "addresses" | "txids", max: number) => Response.json({ error: `too many ${what} (max ${max})` }, { status: 400 });
 
 function electrumScriptHash(address: string): string {
   const lb = cashAddressToLockingBytecode(address);
@@ -18,13 +24,16 @@ function electrumScriptHash(address: string): string {
   return binToHex(sha256.hash(lb.bytecode).reverse());
 }
 export async function POST(request: Request) {
+  const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+  if (!(await allowRequest(`chain:${ip}`))) return Response.json({ error: "rate limited, try again in a minute" }, { status: 429 });
   const body = (await request.json().catch(() => ({}))) as { op?: string; addresses?: unknown; hex?: unknown; txids?: unknown };
   const provider = getProvider();
   try {
     if (body.op === "height") return Response.json({ height: await provider.getBlockHeight() });
 
     if (body.op === "utxos") {
-      const addresses = Array.isArray(body.addresses) ? body.addresses.slice(0, 60).map(String) : [];
+      const addresses = Array.isArray(body.addresses) ? body.addresses.map(String) : [];
+      if (addresses.length > MAX_ADDRESSES) return tooMany("addresses", MAX_ADDRESSES);
       for (const a of addresses) {
         if (typeof cashAddressToLockingBytecode(a) === "string") return Response.json({ error: `invalid address ${a}` }, { status: 400 });
       }
@@ -38,7 +47,8 @@ export async function POST(request: Request) {
     }
 
     if (body.op === "history") {
-      const addresses = Array.isArray(body.addresses) ? body.addresses.slice(0, 40).map(String) : [];
+      const addresses = Array.isArray(body.addresses) ? body.addresses.map(String) : [];
+      if (addresses.length > MAX_ADDRESSES) return tooMany("addresses", MAX_ADDRESSES);
       const hashes = addresses.map(electrumScriptHash);
       const lists = await Promise.all(
         hashes.map(async (h) => {
@@ -52,7 +62,8 @@ export async function POST(request: Request) {
     }
 
     if (body.op === "txs") {
-      const txids = Array.isArray(body.txids) ? body.txids.slice(0, 60).map(String) : [];
+      const txids = Array.isArray(body.txids) ? body.txids.map(String) : [];
+      if (txids.length > MAX_TXIDS) return tooMany("txids", MAX_TXIDS);
       if (txids.some((t) => !/^[0-9a-f]{64}$/.test(t))) return Response.json({ error: "invalid txid" }, { status: 400 });
       const txs = await Promise.all(txids.map(async (txid) => ({ txid, hex: (await provider.getRawTransaction(txid)) as string })));
       return Response.json({ txs });
