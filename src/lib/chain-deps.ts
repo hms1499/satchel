@@ -4,4 +4,5 @@
  * whose classes fail `instanceof` checks inside the shared modules).
  */
 export { ElectrumNetworkProvider, SignatureTemplate, type NetworkProvider, type SpendableUtxo } from "cashscript";
+export { FailoverElectrumProvider } from "./electrum-failover";
 export { binToHex, hexToBin, secp256k1, validateSecp256k1PrivateKey } from "@bitauth/libauth";
