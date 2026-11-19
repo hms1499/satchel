@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { useWizardConnect, WizardConnectQRDialog } from "@wizardconnect/react";
 import { NETWORK, txUrl } from "@/lib/config";
 import { descriptorParams, type VaultDescriptor } from "@/lib/descriptor";
-import { fetchConfig, fmtSats, loadDescriptor, saveDescriptor, shortAddress, shortHash, type AppConfig } from "@/lib/client/agent";
-import { createVault, findOwnedVaults, ownerAccount, sumSats, walletFunds, withdrawVault, type CreateVaultInput } from "@/lib/client/wallet";
+import { fetchConfig, fmtSats, shortAddress, shortHash, type AppConfig } from "@/lib/client/agent";
+import { forgetVault, loadVaults, rememberVault, sameVault } from "@/lib/client/vault-store";
+import { mergeVaults, routeVaults, type OpenVault } from "@/lib/client/vault-routing";
+import { createVault, findOwnedVaults, ownerAccount, sumSats, vaultBalance, walletFunds, withdrawVault, type CreateVaultInput } from "@/lib/client/wallet";
 import { Banner } from "./Banner";
 import { CreateVault } from "./CreateVault";
 import { Dashboard } from "./Dashboard";
 import { Landing } from "./Landing";
+import { VaultList } from "./VaultList";
 import { Button, Card, Logo } from "./ui";
 
 type View = "landing" | "app";
@@ -18,14 +21,21 @@ export function SatchelApp() {
   const wc = useWizardConnect({ dappName: "Satchel", dappIcon: "https://satchel.vercel.app/icon.png" });
   const [view, setView] = useState<View>("landing");
   const [config, setConfig] = useState<AppConfig | null>(null);
-  const [descriptor, setDescriptor] = useState<VaultDescriptor | null>(null);
+  // Without a wallet: the most recently remembered vault (its Dashboard works for the agent without the wallet).
+  const [offlineVault, setOfflineVault] = useState<VaultDescriptor | null>(null);
+  // With a wallet: the scan of its open vaults, and what the user picked (see routeVaults).
+  const [scan, setScan] = useState<"pending" | "done" | "failed">("pending");
+  const [scanNonce, setScanNonce] = useState(0);
+  const [open, setOpen] = useState<OpenVault[]>([]);
+  const [chosen, setChosen] = useState<VaultDescriptor | null>(null);
+  const [wantsCreate, setWantsCreate] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [walletBalance, setWalletBalance] = useState<bigint | null>(null);
   const [busyStep, setBusyStep] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [withdrawing, setWithdrawing] = useState(false);
   const [withdrawError, setWithdrawError] = useState<string | null>(null);
   const [closed, setClosed] = useState<{ txid: string; amount: bigint } | null>(null);
-  const [owned, setOwned] = useState<{ descriptor: VaultDescriptor; balance: bigint }[]>([]);
   // `?agent=<pubkey>`: create the vault for the user's own agent (satchel-pay-mcp) instead of Satchel's hosted agent.
   const [externalAgentPk, setExternalAgentPk] = useState<string | null>(null);
   const [agentParamError, setAgentParamError] = useState<string | null>(null);
@@ -35,14 +45,17 @@ export function SatchelApp() {
     const agentParam = new URLSearchParams(window.location.search).get("agent");
     if (agentParam !== null) {
       // Reading the URL after mount (window is unavailable during SSR).
-      if (/^0[23][0-9a-f]{64}$/.test(agentParam)) setExternalAgentPk(agentParam); // eslint-disable-line react-hooks/set-state-in-effect
+      if (/^0[23][0-9a-f]{64}$/.test(agentParam)) {
+        setExternalAgentPk(agentParam); // eslint-disable-line react-hooks/set-state-in-effect
+        setWantsCreate(true); // an MCP link always means "create a vault for my agent"
+      }
       else setAgentParamError("The agent key in this link is not a valid public key, so this vault would use Satchel's hosted agent instead. Run satchel_setup in your agent again to get a fresh link.");
       setView("app");
     }
-    const stored = loadDescriptor();
     // Restoring persisted client state after mount (localStorage is unavailable during SSR).
-    if (stored && stored.network === NETWORK) {
-      setDescriptor(stored);
+    const stored = loadVaults()[0];
+    if (stored) {
+      setOfflineVault(stored);
       setView("app");
     }
   }, []);
@@ -76,25 +89,46 @@ export function SatchelApp() {
     };
   }, [connected, wc.manager]);
 
-  // No vault in this browser: look for open vaults this wallet owns on chain (genesis recovery memo).
+  // Once a wallet is connected: find every open vault it owns (chain scan + vaults this browser remembers).
   const knownPayees = config?.tools.map((t) => t.payTo);
   const payeesKey = knownPayees?.join(",");
+  const ownerPk = connected && wc.manager ? safeOwnerPk(wc.manager) : null;
   useEffect(() => {
-    if (!connected || !wc.manager || !payeesKey || descriptor) return;
-    let cancelled = false;
+    if (!wc.manager || !ownerPk || !payeesKey) return;
+    let cancelled = false; // a wallet switch or a retry discards the previous scan's results
+    setScan("pending"); // eslint-disable-line react-hooks/set-state-in-effect
+    setOpen([]); // never show a previous wallet's vaults while this one is being scanned
     findOwnedVaults(wc.manager, payeesKey.split(","))
-      .then((list) => !cancelled && setOwned(list))
-      .catch(() => !cancelled && setOwned([]));
+      .then((scanned) => mergeVaults(scanned, loadVaults(), ownerPk, vaultBalance))
+      .then((list) => {
+        if (cancelled) return;
+        setOpen(list);
+        setScan("done");
+      })
+      .catch(() => !cancelled && setScan("failed"));
     return () => {
       cancelled = true;
     };
-  }, [connected, wc.manager, payeesKey, descriptor]);
+  }, [wc.manager, ownerPk, payeesKey, scanNonce]);
 
-  const openOwned = (d: VaultDescriptor) => {
-    saveDescriptor(d);
-    setDescriptor(d);
-    setOwned([]);
-    setClosed(null);
+  const route = ownerPk ? routeVaults({ scan, open, wantsCreate, chosen, browsing }) : null;
+  // The vault whose Dashboard is on screen, if any.
+  const descriptor = route ? (route.screen === "dashboard" ? route.vault.descriptor : null) : offlineVault;
+
+  const openVault = (v: OpenVault) => {
+    setChosen(v.descriptor);
+    setBrowsing(false);
+    setWantsCreate(false);
+  };
+  const backToList = () => {
+    setChosen(null);
+    setWantsCreate(false);
+    setBrowsing(true);
+    if (!connected) setOfflineVault(null);
+  };
+  const newVault = () => {
+    setChosen(null);
+    setWantsCreate(true);
   };
 
   const owner = connected && wc.manager ? safeOwner(wc.manager) : null;
@@ -110,8 +144,11 @@ export function SatchelApp() {
     setBusyStep("Starting…");
     try {
       const d = await createVault(wc.manager, input, knownPayees ?? [], setBusyStep, externalAgentPk ?? undefined);
-      saveDescriptor(d);
-      setDescriptor(d);
+      rememberVault(d);
+      setOpen((list) => [{ descriptor: d, balance: input.deposit, withdrawOnly: !d.token }, ...list.filter((v) => !sameVault(v.descriptor, d))]);
+      setChosen(d);
+      setWantsCreate(false);
+      setBrowsing(false);
       setClosed(null);
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : "Could not create the vault");
@@ -135,8 +172,11 @@ export function SatchelApp() {
     setWithdrawError(null);
     try {
       const result = await withdrawVault(wc.manager, descriptorParams(descriptor));
-      saveDescriptor(null);
-      setDescriptor(null);
+      forgetVault(descriptor);
+      setOpen((list) => list.filter((v) => !sameVault(v.descriptor, descriptor)));
+      setChosen(null);
+      setOfflineVault(null);
+      setBrowsing(false);
       setClosed(result);
     } catch (e) {
       setWithdrawError(e instanceof Error ? e.message : "Withdrawal failed");
@@ -189,7 +229,7 @@ export function SatchelApp() {
         )}
         {view === "landing" && <Landing onLaunch={launch} />}
 
-        {view === "app" && closed && !descriptor && (
+        {view === "app" && closed && (
           <section className="flex justify-center py-12">
             <Card className="flex w-full max-w-[560px] flex-col gap-4 p-8">
               <span className="text-[13px] font-semibold text-brand">Vault closed</span>
@@ -201,7 +241,7 @@ export function SatchelApp() {
                 </a>
               </p>
               <Button className="self-start" onClick={() => setClosed(null)}>
-                Create another vault
+                Continue
               </Button>
             </Card>
           </section>
@@ -242,33 +282,22 @@ export function SatchelApp() {
           </section>
         )}
 
-        {view === "app" && !descriptor && connected && owned.length > 0 && (
-          <section className="flex justify-center pt-6">
-            <Card className="flex w-full max-w-[560px] flex-col gap-3 p-6">
-              <span className="text-[13px] font-semibold text-brand">Found on the blockchain</span>
-              <p className="text-body">
-                Your wallet owns {owned.length === 1 ? "an open vault" : `${owned.length} open vaults`} that this browser doesn&apos;t
-                remember. You can open {owned.length === 1 ? "it" : "them"} to check the balance and withdraw.
-              </p>
-              {owned.map(({ descriptor: d, balance }) => (
-                <div key={d.genesisTxid} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line p-3.5">
-                  <span className="text-sm">
-                    <span className="font-semibold">{fmtSats(balance)} sats</span>
-                    <span className="text-muted"> · cap {fmtSats(d.params.capPerPeriod)} sats · created in </span>
-                    <a className="font-mono text-brand underline" href={txUrl(d.genesisTxid!)} target="_blank" rel="noreferrer">
-                      {shortHash(d.genesisTxid!)}
-                    </a>
-                  </span>
-                  <Button variant="secondary" onClick={() => openOwned(d)}>
-                    Open vault
-                  </Button>
-                </div>
-              ))}
-            </Card>
-          </section>
+        {view === "app" && !closed && route && (route.screen === "scanning" || route.screen === "scan-failed" || route.screen === "list") && (
+          <VaultList
+            state={route.screen === "scanning" ? "scanning" : route.screen === "scan-failed" ? "failed" : "list"}
+            vaults={open}
+            onOpen={openVault}
+            onNew={newVault}
+            onRetry={() => setScanNonce((n) => n + 1)}
+          />
         )}
 
-        {view === "app" && !closed && !descriptor && connected && config && (
+        {view === "app" && !closed && route?.screen === "create" && config && open.length > 0 && (
+          <button className="mt-4 cursor-pointer text-sm font-semibold text-brand underline-offset-2 hover:underline" onClick={backToList}>
+            ← Your vaults ({open.length} open)
+          </button>
+        )}
+        {view === "app" && !closed && route?.screen === "create" && config && (
           <CreateVault
             tools={config.tools}
             sellers={config.sellers}
@@ -280,8 +309,10 @@ export function SatchelApp() {
           />
         )}
 
-        {view === "app" && descriptor && config && (
+        {view === "app" && !closed && descriptor && config && (
           <Dashboard
+            key={descriptor.params.agentPk + descriptor.params.capPerPeriod + descriptor.params.periodBlocks}
+            onBack={backToList}
             descriptor={descriptor}
             tools={config.tools}
             llm={config.llm}
@@ -304,6 +335,14 @@ export function SatchelApp() {
       )}
     </div>
   );
+}
+
+function safeOwnerPk(manager: Parameters<typeof ownerAccount>[0]): string | null {
+  try {
+    return ownerAccount(manager).pubHex;
+  } catch {
+    return null;
+  }
 }
 
 function safeOwner(manager: Parameters<typeof ownerAccount>[0]): string | null {

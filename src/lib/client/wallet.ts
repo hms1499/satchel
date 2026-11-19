@@ -5,7 +5,7 @@ import { binToHex, publicKeyToP2pkhCashAddress } from "@bitauth/libauth";
 import type { DappConnectionManager } from "@wizardconnect/dapp";
 import { NETWORK } from "../config";
 import { buildGenesis, buildWithdraw, findVaultUtxo, getVaultContract, lockingBytecodeOf, type VaultParams } from "../vault";
-import { EXTERNAL_AGENT_INDEX, paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
+import { EXTERNAL_AGENT_INDEX, descriptorParams, paramsToDescriptorParams, type VaultDescriptor } from "../descriptor";
 import { descriptorFromRecovered, encodeRecoveryMemo, findVaultsInTransactions } from "../recovery";
 import { toRelaySignRequest } from "../wc-relay";
 import { broadcast, getBlockHeight, getHistory, getTransactions, getUtxosFor, httpProvider } from "./chain";
@@ -227,4 +227,14 @@ export async function findOwnedVaults(manager: DappConnectionManager, knownPayee
     open.push({ balance: utxo.satoshis, descriptor: descriptorFromRecovered(v, NETWORK) });
   }
   return open;
+}
+
+/** The vault's balance on chain, or null when it is closed or cannot be built (e.g. out-of-range parameters). */
+export async function vaultBalance(d: VaultDescriptor): Promise<bigint | null> {
+  try {
+    const utxo = await findVaultUtxo(getVaultContract(descriptorParams(d), httpProvider));
+    return utxo ? utxo.satoshis : null;
+  } catch {
+    return null;
+  }
 }

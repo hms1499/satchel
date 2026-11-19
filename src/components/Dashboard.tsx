@@ -37,6 +37,7 @@ export function Dashboard({
   onWithdraw,
   withdrawing,
   withdrawError,
+  onBack,
 }: {
   descriptor: VaultDescriptor;
   tools: ToolInfo[];
@@ -44,6 +45,8 @@ export function Dashboard({
   onWithdraw: () => void;
   withdrawing: boolean;
   withdrawError: string | null;
+  /** "← Your vaults": back to the list of the wallet's vaults. */
+  onBack?: () => void;
 }) {
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -138,6 +141,11 @@ export function Dashboard({
     <section className="flex flex-wrap items-start gap-6 py-6">
       <div className="flex min-w-0 flex-[1_1_340px] flex-col gap-5">
         <Card className="flex flex-col gap-4">
+          {onBack && (
+            <button className="cursor-pointer self-start text-sm font-semibold text-brand underline-offset-2 hover:underline" onClick={onBack}>
+              ← Your vaults
+            </button>
+          )}
           <div className="flex items-center justify-between gap-2">
             <CardTitle>Your vault</CardTitle>
             {status && <span className="font-mono text-xs text-muted">{shortAddress(status.address)}</span>}
