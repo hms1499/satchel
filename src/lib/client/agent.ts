@@ -79,26 +79,6 @@ export async function runAgent(descriptor: VaultDescriptor, prompt: string, onEv
   if (buffer.trim()) onEvent(JSON.parse(buffer) as AgentEvent);
 }
 
-const KEY = "satchel:vault";
-
-export function loadDescriptor(): VaultDescriptor | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as VaultDescriptor) : null;
-  } catch {
-    return null;
-  }
-}
-
-export function saveDescriptor(d: VaultDescriptor | null) {
-  try {
-    if (d) localStorage.setItem(KEY, JSON.stringify(d));
-    else localStorage.removeItem(KEY);
-  } catch {
-    // Storage unavailable (private mode): the vault still works for this session.
-  }
-}
-
 export const fmtSats = (v: bigint | string | number) => BigInt(v).toLocaleString("en-US");
 export const shortHash = (h: string, n = 6) => (h.length > 2 * n + 1 ? `${h.slice(0, n)}…${h.slice(-4)}` : h);
 export const shortAddress = (a: string) => {
