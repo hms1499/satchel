@@ -1,4 +1,4 @@
-import { LINKS, MAINNET_PROOF, proofTxUrl } from "@/lib/proof";
+import { LINKS, MAINNET_PROOF, MCP_VERSION, proofTxUrl } from "@/lib/proof";
 import { Button } from "./ui";
 
 const RULES = [
@@ -138,7 +138,7 @@ export function Landing({ onLaunch }: { onLaunch: () => void }) {
               covenant enforces the cap and the allowlist.
             </p>
             <code className="block overflow-x-auto whitespace-nowrap rounded-xl bg-ink px-4 py-3 font-mono text-[13px] text-[#e8ece6]">
-              claude mcp add satchel -- npx -y satchel-pay-mcp@0.1.0
+              {`claude mcp add satchel -- npx -y satchel-pay-mcp@${MCP_VERSION}`}
             </code>
             <a href={LINKS.mcpNpm} target="_blank" rel="noreferrer" className="font-semibold text-brand hover:underline">
               satchel-pay-mcp on npm ↗

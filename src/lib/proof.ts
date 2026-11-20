@@ -1,4 +1,5 @@
 import { explorerTxUrl } from "./config";
+import mcpPackage from "../../mcp/package.json";
 
 /**
  * Mainnet evidence on covenant v2 from `mcp/scripts/mainnet-e2e.mts` (2026-11-19, `E2E OK`): satchel-pay-mcp over stdio against a
@@ -48,6 +49,9 @@ export const MAINNET_PROOF: readonly ProofStep[] = [
 ];
 
 export const proofTxUrl = (txid: string) => explorerTxUrl("mainnet", txid);
+
+/** The published satchel-pay-mcp version, read from mcp/package.json so the landing page can never pin a stale one. */
+export const MCP_VERSION: string = mcpPackage.version;
 
 export const LINKS = {
   seller: "https://satchel-example-seller.vercel.app",

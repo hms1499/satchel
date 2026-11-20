@@ -15,7 +15,7 @@ for APIs that charge per call, and send BCH to the payees you chose, from a
   `SATCHEL_MAX_PRICE_SATS` per API call or `SATCHEL_MAX_SEND_SATS` per direct send, and only APIs on origins you allowed,
   one payment at a time.
 
-## What v0.1.0 can pay
+## What it can pay
 
 - **Satchel's own paid tools** (listed by `satchel_catalog`).
 - **Sellers that use `satchel-pay-server`** (the seller kit in the Satchel repo), once you add their origin to `SATCHEL_PAY_ORIGINS` and
